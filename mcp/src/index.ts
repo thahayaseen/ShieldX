@@ -6,7 +6,7 @@ import express from 'express';
 import cors from 'cors';
 
 import { getHeroStatus } from './tools/heroes.js';
-import { getActiveMissions, getHeroAssignment } from './tools/missions.js';
+import { getActiveMissions, getHeroAssignment, createMission } from './tools/missions.js';
 import { getBreakingIncidents } from './tools/incidents.js';
 import { getSystemOverview } from './tools/system.js';
 import { analyzeIncident } from './ai/gemini.js';
@@ -41,6 +41,20 @@ const TOOLS = {
       properties: {
         mission_id: { type: 'string', description: 'Specific mission ID (optional)' }
       }
+    }
+  },
+  create_mission: {
+    name: 'create_mission',
+    description: 'Create a new mission and optionally dispatch a hero (sends push notification).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Title of the mission' },
+        description: { type: 'string', description: 'Detailed description of the mission' },
+        priority: { type: 'string', description: 'Priority level (low, medium, high, critical)' },
+        assigned_hero_id: { type: 'string', description: 'UUID of the hero to dispatch (optional)' }
+      },
+      required: ['title', 'description', 'priority']
     }
   },
   get_breaking_incidents: {
@@ -119,6 +133,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const schema = z.object({ mission_id: z.string().optional() });
         const { mission_id } = schema.parse(args || {});
         result = await getHeroAssignment(mission_id);
+        break;
+      }
+      
+      case 'create_mission': {
+        const schema = z.object({ 
+          title: z.string(),
+          description: z.string(),
+          priority: z.string(),
+          assigned_hero_id: z.string().optional()
+        });
+        const parsedArgs = schema.parse(args);
+        result = await createMission(
+          parsedArgs.title,
+          parsedArgs.description,
+          parsedArgs.priority,
+          parsedArgs.assigned_hero_id
+        );
         break;
       }
       
