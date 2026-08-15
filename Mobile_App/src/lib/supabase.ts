@@ -86,7 +86,8 @@ export async function updateHeroStatusInSupabase(
 /** Update Mission Status directly in Supabase DB */
 export async function updateMissionStatusInSupabase(
   missionId: string,
-  status: MissionStatus
+  status: MissionStatus,
+  heroId?: string
 ): Promise<void> {
   const dbStatusMap: Record<MissionStatus, string> = {
     pending: 'pending',
@@ -100,9 +101,18 @@ export async function updateMissionStatusInSupabase(
 
   const dbStatus = dbStatusMap[status] ?? status;
 
+  const updatePayload: Record<string, any> = {
+    status: dbStatus,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (heroId) {
+    updatePayload.assigned_hero_id = heroId;
+  }
+
   const { error } = await supabase
     .from('missions')
-    .update({ status: dbStatus, updated_at: new Date().toISOString() })
+    .update(updatePayload)
     .eq('id', missionId);
 
   if (error) {

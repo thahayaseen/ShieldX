@@ -69,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span style={styles.telemetryDot} />
           <span style={styles.telemetryText}>NET PROTOCOL: MCP v1.0</span>
         </div>
-        <p style={styles.telemetrySub}>HARDWARE LINK: ESP32 SYNCED</p>
+        <p style={styles.telemetrySub}>NETWORK LINK: MOBILE APP SYNCED</p>
       </div>
     </aside>
   );

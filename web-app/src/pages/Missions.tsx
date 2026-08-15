@@ -4,14 +4,14 @@ import type { Hero, Mission, MissionStatus, Priority } from '../types';
 interface MissionsProps {
   missions: Mission[];
   heroes?: Hero[];
-  onUpdateStatus: (missionId: string, status: MissionStatus) => void;
+  onUpdateStatus?: (missionId: string, status: MissionStatus) => void;
   onDispatchMission?: (mission: Mission) => void;
 }
 
 export const Missions: React.FC<MissionsProps> = ({
   missions,
   heroes = [],
-  onUpdateStatus,
+  onUpdateStatus: _onUpdateStatus,
   onDispatchMission,
 }) => {
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -158,7 +158,7 @@ export const Missions: React.FC<MissionsProps> = ({
               CANCEL
             </button>
             <button type="submit" className="hud-btn hud-btn-critical">
-              ⚡ TRANSMIT MISSION TO HERO (WRISTBAND ALERT)
+              ⚡ TRANSMIT MISSION TO HERO DEVICE
             </button>
           </div>
         </form>
@@ -207,34 +207,52 @@ export const Missions: React.FC<MissionsProps> = ({
                       </div>
                     )}
 
-                    {/* Quick status transition buttons */}
+                    {/* Read-Only Hero Status Telemetry (Admin cannot override hero status) */}
                     <div style={styles.actionRow}>
-                      {col.id === 'pending' && (
-                        <button
-                          className="hud-btn hud-btn-primary"
-                          style={{ width: '100%', fontSize: '11px' }}
-                          onClick={() => onUpdateStatus(m.id, 'accepted')}>
-                          ACCEPT MISSION ⚡
-                        </button>
-                      )}
-
-                      {col.id === 'accepted' && (
-                        <button
-                          className="hud-btn"
-                          style={{ width: '100%', fontSize: '11px', borderColor: '#ffd54f', color: '#ffd54f' }}
-                          onClick={() => onUpdateStatus(m.id, 'en_route')}>
-                          DEPLOY EN ROUTE 🚀
-                        </button>
-                      )}
-
-                      {col.id === 'en_route' && (
-                        <button
-                          className="hud-btn"
-                          style={{ width: '100%', fontSize: '11px', borderColor: '#00e676', color: '#00e676' }}
-                          onClick={() => onUpdateStatus(m.id, 'complete')}>
-                          MARK COMPLETE ✅
-                        </button>
-                      )}
+                      <span
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          textAlign: 'center',
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          letterSpacing: '0.8px',
+                          padding: '6px 8px',
+                          borderRadius: '4px',
+                          backgroundColor:
+                            col.id === 'pending'
+                              ? 'rgba(255, 56, 96, 0.1)'
+                              : col.id === 'accepted'
+                              ? 'rgba(255, 213, 79, 0.1)'
+                              : col.id === 'en_route'
+                              ? 'rgba(0, 212, 255, 0.1)'
+                              : 'rgba(0, 230, 118, 0.1)',
+                          border: `1px solid ${
+                            col.id === 'pending'
+                              ? 'rgba(255, 56, 96, 0.3)'
+                              : col.id === 'accepted'
+                              ? 'rgba(255, 213, 79, 0.3)'
+                              : col.id === 'en_route'
+                              ? 'rgba(0, 212, 255, 0.3)'
+                              : 'rgba(0, 230, 118, 0.3)'
+                          }`,
+                          color:
+                            col.id === 'pending'
+                              ? '#ff3860'
+                              : col.id === 'accepted'
+                              ? '#ffd54f'
+                              : col.id === 'en_route'
+                              ? '#00d4ff'
+                              : '#00e676',
+                        }}>
+                        {col.id === 'pending'
+                          ? '📡 AWAITING HERO ACCEPTANCE'
+                          : col.id === 'accepted'
+                          ? '⚡ HERO ACCEPTED — PREPARING'
+                          : col.id === 'en_route'
+                          ? '🚀 HERO ACTIVE EN ROUTE'
+                          : '✅ HERO RESOLVED MISSION'}
+                      </span>
                     </div>
                   </div>
                 ))}

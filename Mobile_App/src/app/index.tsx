@@ -115,19 +115,19 @@ export default function HeroDashboard() {
     setAlertVisible(false);
     setIncomingMission(null);
     try {
-      await updateMissionStatusInSupabase(mission.id, 'accepted');
+      await updateMissionStatusInSupabase(mission.id, 'accepted', activeHero.id);
     } catch {}
     setActiveMissions((prev) =>
-      prev.map((m) => (m.id === mission.id ? { ...m, status: 'accepted' } : m))
+      prev.map((m) => (m.id === mission.id ? { ...m, status: 'accepted', assignedHeroId: activeHero.id } : m))
     );
   };
 
   const handleMissionStatusChange = async (missionId: string, status: Mission['status']) => {
     try {
-      await updateMissionStatusInSupabase(missionId, status);
+      await updateMissionStatusInSupabase(missionId, status, activeHero.id);
     } catch {}
     setActiveMissions((prev) =>
-      prev.map((m) => (m.id === missionId ? { ...m, status } : m))
+      prev.map((m) => (m.id === missionId ? { ...m, status, assignedHeroId: activeHero.id } : m))
     );
   };
 
@@ -137,13 +137,14 @@ export default function HeroDashboard() {
     setRefreshing(false);
   };
 
-  // Missions assigned specifically to this authenticated hero
+  // Missions assigned specifically to this authenticated hero OR unassigned general broadcasts
   const assignedToActiveHero = activeMissions.filter((m) => {
     if (!m) return false;
     const matchesId = m.assignedHeroId === activeHero.id;
     const matchesCodename =
       m.assignedHero?.codename?.toLowerCase() === activeHero.codename?.toLowerCase();
-    return matchesId || matchesCodename;
+    const isUnassigned = !m.assignedHeroId;
+    return matchesId || matchesCodename || isUnassigned;
   });
 
   return (
@@ -333,7 +334,7 @@ export default function HeroDashboard() {
               <Text style={styles.emptyHeroIcon}>🛡️</Text>
               <Text style={styles.emptyHeroTitle}>NO ACTIVE DISPATCHES</Text>
               <Text style={styles.emptyHeroSub}>
-                Standing by in {activeHero.location?.label || 'HQ Sector'}. Command Center will alert your wristband when an emergency requiring {activeHero.codename}'s powers arises.
+                Standing by in {activeHero.location?.label || 'HQ Sector'}. Command Center will alert your mobile app when an emergency requiring {activeHero.codename}'s powers arises.
               </Text>
             </View>
           )}
@@ -360,7 +361,7 @@ export default function HeroDashboard() {
             setAlertVisible(true);
           }}>
           <Text style={styles.simulateAlertText}>
-            ⚡ TEST WRISTBAND ALERT FOR {activeHero.codename.toUpperCase()}
+            ⚡ TEST MOBILE DEVICE ALERT FOR {activeHero.codename.toUpperCase()}
           </Text>
         </TouchableOpacity>
       </ScrollView>

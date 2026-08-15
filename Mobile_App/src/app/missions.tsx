@@ -78,22 +78,23 @@ export default function MissionsScreen() {
 
   const handleStatusChange = async (missionId: string, status: Mission['status']) => {
     try {
-      await updateMissionStatusInSupabase(missionId, status);
+      await updateMissionStatusInSupabase(missionId, status, activeHero.id);
     } catch {
       // update local
     }
     setMissions((prev) =>
-      prev.map((m) => (m.id === missionId ? { ...m, status } : m))
+      prev.map((m) => (m.id === missionId ? { ...m, status, assignedHeroId: activeHero.id } : m))
     );
   };
 
-  // Strictly list ONLY missions dispatched to THIS hero
+  // List missions dispatched to THIS hero OR unassigned general broadcasts
   const heroOnlyMissions = missions.filter((m) => {
     if (!m) return false;
     const matchesId = m.assignedHeroId === activeHero.id;
     const matchesCodename =
       m.assignedHero?.codename?.toLowerCase() === activeHero.codename?.toLowerCase();
-    return matchesId || matchesCodename;
+    const isUnassigned = !m.assignedHeroId;
+    return matchesId || matchesCodename || isUnassigned;
   });
 
   const filteredMissions = heroOnlyMissions.filter((m) => {

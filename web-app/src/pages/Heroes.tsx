@@ -189,7 +189,7 @@ export const Heroes: React.FC<HeroesProps> = ({ heroes, onRefreshHeroes, onUpdat
 
             <div style={styles.statusActionRow}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                <span style={styles.label}>TELEMETRY SOURCE: ESP32 WEARABLE</span>
+                <span style={styles.label}>TELEMETRY SOURCE: HERO MOBILE APP</span>
                 <button style={styles.editLinkBtn} onClick={() => openApproveModal(hero)}>
                   ✏️ EDIT GUARDIAN PROFILE
                 </button>

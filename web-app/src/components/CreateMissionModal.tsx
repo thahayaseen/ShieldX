@@ -146,7 +146,7 @@ export const CreateMissionModal: React.FC<CreateMissionModalProps> = ({
               CANCEL
             </button>
             <button type="submit" className="hud-btn hud-btn-critical">
-              ⚡ TRANSMIT MISSION TO WRISTBAND
+              ⚡ TRANSMIT MISSION TO HERO DEVICE
             </button>
           </div>
         </form>

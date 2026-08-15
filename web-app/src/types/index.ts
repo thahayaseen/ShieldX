@@ -86,6 +86,7 @@ export interface ChatMessage {
   role: 'user' | 'agent';
   content: string;
   timestamp: string;
+  audioUrl?: string;
 }
 
 export interface ChatRequest {
