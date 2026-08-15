@@ -10,65 +10,74 @@ export interface MobileAuthError {
   attemptedEmail?: string;
 }
 
+/** Hero profile is pending admin verification (name = 'Unknown Hero' / codename = 'Agent_...') */
+export function isHeroPending(hero: Hero): boolean {
+  return (
+    hero.name === 'Unknown Hero' ||
+    hero.codename.startsWith('Agent_') ||
+    hero.codename === 'Unknown' ||
+    hero.codename === 'Agent_Pending'
+  );
+}
+
 interface AuthContextType {
   hero: Hero | null;
   userEmail: string | null;
   userName: string | null;
   userAvatar: string | null;
   isAuthenticated: boolean;
+  isPendingApproval: boolean;
   isLoading: boolean;
   clearanceLevel: string;
   authError: MobileAuthError | null;
   clearAuthError: () => void;
   loginWithGoogle: () => Promise<{ error?: string }>;
   logout: () => Promise<void>;
+  refreshHeroProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [session, setSession] = useState<Session | null>(null);
   const [hero, setHero] = useState<Hero | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isPendingApproval, setIsPendingApproval] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [clearanceLevel, setClearanceLevel] = useState<string>('UNVERIFIED');
   const [authError, setAuthError] = useState<MobileAuthError | null>(null);
 
   const clearAuthError = () => setAuthError(null);
 
-  async function applySession(session: Session | null) {
-    if (session?.user) {
-      const email = session.user.email ?? undefined;
-      const name = session.user.user_metadata?.full_name ?? session.user.user_metadata?.name ?? null;
-      const avatar = session.user.user_metadata?.avatar_url ?? null;
+  async function applySession(currentSession: Session | null) {
+    setSession(currentSession);
+    if (currentSession?.user) {
+      const email = currentSession.user.email ?? undefined;
+      const name = currentSession.user.user_metadata?.full_name ?? currentSession.user.user_metadata?.name ?? null;
+      const avatar = currentSession.user.user_metadata?.avatar_url ?? null;
 
-      // Query Supabase heroes table dynamically
-      const mappedHero = await getHeroFromSupabase(session.user);
+      setUserEmail(email ?? null);
+      setUserName(name);
+      setUserAvatar(avatar);
+      setAuthError(null);
+
+      // Fetch hero profile from Supabase
+      const mappedHero = await getHeroFromSupabase(currentSession.user);
 
       if (mappedHero) {
+        const pending = isHeroPending(mappedHero);
         setHero(mappedHero);
-        setUserEmail(email ?? null);
-        setUserName(name);
-        setUserAvatar(avatar);
         setIsAuthenticated(true);
-        setClearanceLevel('ALPHA-GUARDIAN // VERIFIED');
-        setAuthError(null);
+        setIsPendingApproval(pending);
+        setClearanceLevel(pending ? 'PENDING ADMIN VERIFICATION' : 'ALPHA-GUARDIAN // VERIFIED');
       } else {
-        // Revoke session for unauthorized users
-        supabase.auth.signOut();
         setHero(null);
-        setUserEmail(null);
-        setUserName(null);
-        setUserAvatar(null);
-        setIsAuthenticated(false);
-        setClearanceLevel('UNVERIFIED');
-        setAuthError({
-          title: 'UNAUTHORIZED HERO ACCOUNT',
-          message: 'No active hero profile found in the Supabase database for your account.',
-          attemptedEmail: email ?? 'Unknown Email',
-        });
+        setIsAuthenticated(true);
+        setIsPendingApproval(true);
+        setClearanceLevel('PENDING ADMIN VERIFICATION');
       }
     } else {
       setHero(null);
@@ -76,21 +85,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUserName(null);
       setUserAvatar(null);
       setIsAuthenticated(false);
+      setIsPendingApproval(false);
       setClearanceLevel('UNVERIFIED');
     }
   }
 
+  const refreshHeroProfile = async () => {
+    if (session) {
+      await applySession(session);
+    }
+  };
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      applySession(session).then(() => setIsLoading(false));
+    // 1. Initial session check
+    supabase.auth.getSession().then(({ data: { session: activeSession } }) => {
+      applySession(activeSession).then(() => setIsLoading(false));
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      applySession(session).then(() => setIsLoading(false));
+    // 2. Auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, activeSession) => {
+      applySession(activeSession).then(() => setIsLoading(false));
     });
+
+    // 3. Supabase Realtime listener on `heroes` table
+    // Instantly updates mobile UI when Admin approves/edits hero in Web App!
+    const realtimeChannel = supabase
+      .channel('public:heroes:mobile')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'heroes' },
+        () => {
+          supabase.auth.getSession().then(({ data: { session: s } }) => {
+            if (s) applySession(s);
+          });
+        }
+      )
+      .subscribe();
 
     return () => {
       subscription.unsubscribe();
+      supabase.removeChannel(realtimeChannel);
     };
   }, []);
 
@@ -121,12 +155,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userName,
         userAvatar,
         isAuthenticated,
+        isPendingApproval,
         isLoading,
         clearanceLevel,
         authError,
         clearAuthError,
         loginWithGoogle,
         logout,
+        refreshHeroProfile,
       }}>
       {children}
     </AuthContext.Provider>

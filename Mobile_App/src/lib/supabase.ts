@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import type { HeroStatus, MissionStatus } from '@/types';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
@@ -56,11 +57,62 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
+// ─── Direct Supabase Database Actions ─────────────────────────
+
+/** Update Hero Status directly in Supabase DB */
+export async function updateHeroStatusInSupabase(
+  heroId: string,
+  status: HeroStatus
+): Promise<void> {
+  const dbStatusMap: Record<HeroStatus, string> = {
+    online: 'available',
+    on_mission: 'on_mission',
+    busy: 'injured',
+    offline: 'offline',
+  };
+
+  const dbStatus = dbStatusMap[status] ?? 'available';
+
+  const { error } = await supabase
+    .from('heroes')
+    .update({ status: dbStatus, updated_at: new Date().toISOString() })
+    .eq('id', heroId);
+
+  if (error) {
+    console.error('[AEGIS Supabase] Failed to update hero status:', error.message);
+  }
+}
+
+/** Update Mission Status directly in Supabase DB */
+export async function updateMissionStatusInSupabase(
+  missionId: string,
+  status: MissionStatus
+): Promise<void> {
+  const dbStatusMap: Record<MissionStatus, string> = {
+    pending: 'pending',
+    accepted: 'accepted',
+    en_route: 'en_route',
+    arrived: 'arrived',
+    complete: 'completed',
+    failed: 'failed',
+  };
+
+  const dbStatus = dbStatusMap[status] ?? status;
+
+  const { error } = await supabase
+    .from('missions')
+    .update({ status: dbStatus, updated_at: new Date().toISOString() })
+    .eq('id', missionId);
+
+  if (error) {
+    console.error('[AEGIS Supabase] Failed to update mission status:', error.message);
+  }
+}
+
 // ─── Realtime subscription helpers ──────────────────────────
 
 /**
  * Subscribe to Supabase real-time changes on a table.
- * Use this as a fallback if Socket.IO events are missed.
  */
 export function subscribeToTable(
   table: 'heroes' | 'missions' | 'incidents' | 'messages',

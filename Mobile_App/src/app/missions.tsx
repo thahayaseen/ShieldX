@@ -12,6 +12,7 @@ import { AegisColors } from '@/constants/theme';
 import { ScanlineOverlay } from '@/components/ScanlineOverlay';
 import { MissionCard } from '@/components/MissionCard';
 import { missionsApi } from '@/lib/api';
+import { updateMissionStatusInSupabase } from '@/lib/supabase';
 import type { Mission, Priority } from '@/types';
 
 const INITIAL_MISSIONS: Mission[] = [
@@ -112,7 +113,7 @@ export default function MissionsScreen() {
 
   const handleStatusChange = async (missionId: string, status: Mission['status']) => {
     try {
-      await missionsApi.updateStatus(missionId, status);
+      await updateMissionStatusInSupabase(missionId, status);
     } catch {
       // update local
     }

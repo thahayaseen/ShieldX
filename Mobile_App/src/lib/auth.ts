@@ -1,6 +1,8 @@
 // ============================================================
-// A.E.G.I.S. – Dynamic Supabase Hero Authentication Service
-// Queries real heroes table from Supabase database.
+// A.E.G.I.S. – Mobile Auth Service (Supabase Google OAuth)
+// The heroes table is auto-populated by the DB trigger
+// `handle_new_user` when a new Google account signs in.
+// We simply fetch the hero row bound to auth.uid().
 // ============================================================
 
 import * as WebBrowser from 'expo-web-browser';
@@ -8,38 +10,37 @@ import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { ALL_HEROES } from '@/constants/heroes';
 import type { Hero, HeroStatus } from '@/types';
 import { getHeroBrandColor } from '@/constants/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
 /**
- * Format raw database hero record from Supabase into typed Hero object
+ * Map raw Supabase DB hero row → typed Hero object for the app.
  */
 export function formatSupabaseHero(dbHero: any): Hero {
   const statusMap: Record<string, HeroStatus> = {
     available: 'online',
     online: 'online',
-    busy: 'busy',
     on_mission: 'on_mission',
+    injured: 'busy',
     offline: 'offline',
   };
 
   return {
     id: dbHero.id,
-    name: dbHero.name || dbHero.codename,
-    codename: dbHero.codename,
+    name: dbHero.name || 'Unknown Hero',
+    codename: dbHero.codename || 'Unknown',
     powers: Array.isArray(dbHero.powers) ? dbHero.powers : [],
-    status: statusMap[dbHero.status] || 'online',
+    status: statusMap[dbHero.status] ?? 'offline',
     location: dbHero.location
       ? {
           lat: dbHero.location.lat ?? 11.2588,
           lng: dbHero.location.lng ?? 75.7804,
-          label: dbHero.location.city || dbHero.location.label || 'Calicut Sector',
+          label: dbHero.location.city || dbHero.location.label || 'Unknown Sector',
         }
       : null,
-    avatarUrl: dbHero.avatar_url,
+    avatarUrl: dbHero.avatar_url ?? null,
     brandColor: getHeroBrandColor(dbHero.codename),
     createdAt: dbHero.created_at || new Date().toISOString(),
     updatedAt: dbHero.updated_at || new Date().toISOString(),
@@ -47,63 +48,38 @@ export function formatSupabaseHero(dbHero: any): Hero {
 }
 
 /**
- * Dynamically queries Supabase heroes table for the authenticated user.
- * 1. Checks if a hero record has user_id === user.id
- * 2. Checks if email matches a hero codename/name in Supabase
- * 3. Binds user_id in Supabase if not bound yet
+ * Fetch the hero profile for an authenticated Supabase user.
+ *
+ * The `handle_new_user` DB trigger auto-creates a heroes row
+ * (name from Google profile, codename = "Agent_<id>", status = "offline")
+ * the moment a user signs up via Google OAuth.
+ *
+ * We simply SELECT by user_id here.
  */
 export async function getHeroFromSupabase(user: User): Promise<Hero | null> {
   try {
-    // 1. Query Supabase heroes table by user_id
-    const { data: boundHeroes } = await supabase
+    const { data, error } = await supabase
       .from('heroes')
       .select('*')
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .single();
 
-    if (boundHeroes && boundHeroes.length > 0) {
-      return formatSupabaseHero(boundHeroes[0]);
-    }
-
-    // 2. Fetch all heroes from Supabase to match by email or bind first available
-    const { data: allHeroes, error } = await supabase.from('heroes').select('*');
-
-    if (error || !allHeroes || allHeroes.length === 0) {
-      console.warn('[AEGIS Auth] No heroes found in Supabase database:', error);
+    if (error || !data) {
+      console.warn('[AEGIS Auth] No hero row found for user_id:', user.id, error?.message);
       return null;
     }
 
-    const email = user.email?.toLowerCase().trim() || '';
-
-    // Match by email pattern (e.g. rafan -> spiderman, bruce -> hulk, etc.)
-    const matched = allHeroes.find((h) => {
-      const code = (h.codename || '').toLowerCase().replace(/[^a-z]/g, '');
-      const name = (h.name || '').toLowerCase().replace(/[^a-z]/g, '');
-      const cleanEmail = email.replace(/[^a-z]/g, '');
-      return cleanEmail.includes(code) || cleanEmail.includes(name);
-    });
-
-    if (matched) {
-      // Bind user_id in Supabase database for future logins
-      await supabase.from('heroes').update({ user_id: user.id }).eq('id', matched.id);
-      return formatSupabaseHero({ ...matched, user_id: user.id });
-    }
-
-    // Bind the first unbound hero in Supabase to this authenticated user
-    const unbound = allHeroes.find((h) => !h.user_id);
-    if (unbound) {
-      await supabase.from('heroes').update({ user_id: user.id }).eq('id', unbound.id);
-      return formatSupabaseHero({ ...unbound, user_id: user.id });
-    }
-
-    return null;
+    return formatSupabaseHero(data);
   } catch (err) {
-    console.error('[AEGIS Supabase Hero Bind Error]:', err);
+    console.error('[AEGIS Auth] getHeroFromSupabase error:', err);
     return null;
   }
 }
 
 /**
  * Initiates Google OAuth via Supabase.
+ * On Web: browser redirect.
+ * On Native: in-app WebBrowser session.
  */
 export async function signInWithGoogle(): Promise<{ error?: string }> {
   try {
@@ -121,10 +97,7 @@ export async function signInWithGoogle(): Promise<{ error?: string }> {
     const redirectUrl = Linking.createURL('auth/callback');
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: redirectUrl,
-        skipBrowserRedirect: true,
-      },
+      options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
     });
     if (error) throw error;
     if (!data?.url) throw new Error('No OAuth URL returned from Supabase');
@@ -132,10 +105,10 @@ export async function signInWithGoogle(): Promise<{ error?: string }> {
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
 
     if (result.type === 'success' && result.url) {
-      const url = result.url;
-      const fragment = url.includes('#') ? url.split('#')[1] : url.split('?')[1];
+      const fragment = result.url.includes('#')
+        ? result.url.split('#')[1]
+        : result.url.split('?')[1];
       const params = new URLSearchParams(fragment ?? '');
-
       const access_token = params.get('access_token');
       const refresh_token = params.get('refresh_token');
 
@@ -146,7 +119,7 @@ export async function signInWithGoogle(): Promise<{ error?: string }> {
         });
         if (sessionError) throw sessionError;
       } else {
-        throw new Error('Authentication was cancelled or token was not received.');
+        throw new Error('Sign-in cancelled or token not received.');
       }
     } else if (result.type === 'cancel' || result.type === 'dismiss') {
       throw new Error('Sign-in was cancelled.');
@@ -159,10 +132,6 @@ export async function signInWithGoogle(): Promise<{ error?: string }> {
   }
 }
 
-/**
- * Sign out of current hero session.
- */
 export async function signOutHero(): Promise<void> {
-  const { error } = await supabase.auth.signOut();
-  if (error) console.error('[AEGIS Auth] Sign out error:', error.message);
+  await supabase.auth.signOut();
 }

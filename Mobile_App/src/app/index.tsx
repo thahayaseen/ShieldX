@@ -17,6 +17,7 @@ import { StatusPill } from '@/components/StatusPill';
 import { IncidentBanner } from '@/components/IncidentBanner';
 import { onSocketEvent } from '@/lib/socket';
 import { heroesApi, missionsApi } from '@/lib/api';
+import { updateHeroStatusInSupabase, updateMissionStatusInSupabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import type { Hero, Mission, HeroStatus } from '@/types';
 
@@ -110,18 +111,15 @@ export default function HeroDashboard() {
 
   const handleStatusToggle = async (nextStatus: HeroStatus) => {
     try {
-      await heroesApi.updateStatus(activeHero.id, nextStatus);
+      await updateHeroStatusInSupabase(activeHero.id, nextStatus);
     } catch {}
   };
-
-  // Hero identity is locked to the authenticated Google account.
-  // To change hero, the operative must sign out and log in with a different account.
 
   const handleAcceptMission = async (mission: Mission) => {
     setAlertVisible(false);
     setIncomingMission(null);
     try {
-      await missionsApi.updateStatus(mission.id, 'accepted');
+      await updateMissionStatusInSupabase(mission.id, 'accepted');
     } catch {}
     setActiveMissions((prev) =>
       prev.map((m) => (m.id === mission.id ? { ...m, status: 'accepted' } : m))
@@ -130,7 +128,7 @@ export default function HeroDashboard() {
 
   const handleMissionStatusChange = async (missionId: string, status: Mission['status']) => {
     try {
-      await missionsApi.updateStatus(missionId, status);
+      await updateMissionStatusInSupabase(missionId, status);
     } catch {}
     setActiveMissions((prev) =>
       prev.map((m) => (m.id === missionId ? { ...m, status } : m))
