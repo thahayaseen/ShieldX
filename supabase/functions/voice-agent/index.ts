@@ -30,25 +30,27 @@ serve(async (req) => {
     console.log(`Connecting to remote MCP Server at ${MCP_SERVER_URL}...`);
     mcpTransport = new SSEClientTransport(new URL(MCP_SERVER_URL));
     const mcpClient = new Client({ name: "agent", version: "1.0.0" }, { capabilities: {} });
+    let geminiTools: any[] = [];
     
     try {
       await mcpClient.connect(mcpTransport);
       console.log("Connected to MCP Server!");
+      
+      // Dynamically fetch all tools from the remote VPS server
+      const { tools: fetchedTools } = await mcpClient.listTools();
+      
+      // Map MCP tool schema to Gemini tool schema
+      geminiTools = fetchedTools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        parameters: t.inputSchema as any,
+      }));
     } catch (connError: any) {
-      console.error("❌ Failed to connect to MCP Server. Check if the URL is correct and the server is running.");
-      console.error("Connection Error Details:", connError);
-      throw new Error(`Failed to connect to remote MCP Server at ${MCP_SERVER_URL}: ${connError.message}`);
+      console.warn("⚠️ Failed to connect to MCP Server. Falling back to basic chat without tools.");
+      console.warn("Connection Error Details:", connError.message);
+      // We don't throw here; we just proceed without tools
+      mcpTransport = null;
     }
-
-    // Dynamically fetch all tools from the remote VPS server
-    const { tools: mcpTools } = await mcpClient.listTools();
-    
-    // Map MCP tool schema to Gemini tool schema
-    const geminiTools = mcpTools.map((t) => ({
-      name: t.name,
-      description: t.description,
-      parameters: t.inputSchema as any,
-    }));
 
     // Build the user parts array depending on what they provided
     const userParts: any[] = [];
@@ -74,9 +76,9 @@ serve(async (req) => {
     const response = await ai.models.generateContent({
       model: "gemini-flash-latest",
       contents: requestContents,
-      config: {
+      config: geminiTools.length > 0 ? {
         tools: [{ functionDeclarations: geminiTools }],
-      },
+      } : undefined,
     });
 
     let finalResponseText = response.text;

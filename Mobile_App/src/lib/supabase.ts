@@ -199,7 +199,8 @@ export function subscribeToTable(
   event: 'INSERT' | 'UPDATE' | 'DELETE' | '*',
   callback: (payload: { new: Record<string, unknown>; old: Record<string, unknown> }) => void
 ) {
-  const channel = (supabase.channel as any)(`public:${table}`)
+  const uniqueChannelName = `public:${table}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  const channel = (supabase.channel as any)(uniqueChannelName)
     .on(
       'postgres_changes',
       { event, schema: 'public', table },

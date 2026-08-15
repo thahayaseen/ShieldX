@@ -10,7 +10,8 @@
 // The frontend NEVER calls the MCP Server directly.
 // ============================================================
 
-import { AudioRecorder, RecordingPresets, requestMicrophonePermissionsAsync, setAudioModeAsync } from 'expo-audio';
+import { AudioModule, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
+import type { AudioRecorder } from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
 
 import { chatApi } from './api';
@@ -58,7 +59,7 @@ let recorder: AudioRecorder | null = null;
 /** Request mic permission and start recording. */
 export async function startRecording(): Promise<void> {
   // Request mic permission — shows the system dialog on first call
-  const { status, canAskAgain } = await requestMicrophonePermissionsAsync();
+  const { status, canAskAgain } = await requestRecordingPermissionsAsync();
   if (status !== 'granted') {
     throw new Error(
       canAskAgain
@@ -73,7 +74,7 @@ export async function startRecording(): Promise<void> {
     playsInSilentMode: true,
   });
 
-  recorder = new AudioRecorder(RecordingPresets.HIGH_QUALITY);
+  recorder = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
   await recorder.prepareToRecordAsync();
   recorder.record();
 }

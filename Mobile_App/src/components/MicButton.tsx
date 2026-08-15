@@ -16,31 +16,31 @@ export const MicButton: React.FC<MicButtonProps> = ({
 }) => {
   const [isRecording, setIsRecording] = useState(false);
 
-  const handlePressIn = async () => {
+  const handlePress = async () => {
     if (disabled) return;
-    try {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
-      setIsRecording(true);
-      await onStartRecord();
-    } catch (err) {
-      console.error('Failed to start recording', err);
-      setIsRecording(false);
-    }
-  };
 
-  const handlePressOut = async () => {
-    if (!isRecording) return;
-    try {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    if (!isRecording) {
+      try {
+        if (Platform.OS !== 'web') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
+        setIsRecording(true);
+        await onStartRecord();
+      } catch (err) {
+        console.error('Failed to start recording', err);
+        setIsRecording(false);
       }
-      setIsRecording(false);
-      await onStopRecord();
-    } catch (err) {
-      console.error('Failed to stop recording', err);
-      setIsRecording(false);
+    } else {
+      try {
+        if (Platform.OS !== 'web') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        }
+        setIsRecording(false);
+        await onStopRecord();
+      } catch (err) {
+        console.error('Failed to stop recording', err);
+        setIsRecording(false);
+      }
     }
   };
 
@@ -60,8 +60,7 @@ export const MicButton: React.FC<MicButtonProps> = ({
       <TouchableOpacity
         activeOpacity={0.8}
         disabled={disabled}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
+        onPress={handlePress}
         style={[
           styles.button,
           isRecording ? styles.buttonRecording : styles.buttonIdle,
