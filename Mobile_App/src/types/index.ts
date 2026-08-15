@@ -56,6 +56,7 @@ export interface Mission {
   assignedHeroId: string | null;
   assignedHero?: Hero;  // Populated by joins
   incidentId?: string;
+  aiReasoning?: string;
   createdAt: string;
   updatedAt: string;
 }

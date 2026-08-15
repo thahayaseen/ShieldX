@@ -10,13 +10,17 @@ import {
   Modal,
   Platform,
 } from 'react-native';
+import { router } from 'expo-router';
 import { AegisColors, getHeroBrandColor } from '@/constants/theme';
 import { ScanlineOverlay } from '@/components/ScanlineOverlay';
 import { MissionCard } from '@/components/MissionCard';
 import { StatusPill } from '@/components/StatusPill';
 import { IncidentBanner } from '@/components/IncidentBanner';
+import { MicButton } from '@/components/MicButton';
 import { onSocketEvent } from '@/lib/socket';
 import { heroesApi, missionsApi } from '@/lib/api';
+import { updateHeroStatusInSupabase, updateMissionStatusInSupabase, subscribeToTable } from '@/lib/supabase';
+import { triggerEmergencyDispatchAlert } from '@/lib/sound';
 import { useAuth } from '@/context/AuthContext';
 import type { Hero, Mission, HeroStatus } from '@/types';
 
@@ -91,9 +95,16 @@ export default function HeroDashboard() {
     fetchLiveState();
 
     const unsubMission = onSocketEvent('mission:assigned', ({ mission }) => {
-      setIncomingMission(mission);
-      setAlertVisible(true);
-      setActiveMissions((prev) => [mission, ...prev.filter((m) => m.id !== mission.id)]);
+      const isForActiveHero =
+        mission.assignedHeroId === activeHero.id ||
+        mission.assignedHero?.codename?.toLowerCase() === activeHero.codename?.toLowerCase();
+
+      if (isForActiveHero) {
+        triggerEmergencyDispatchAlert();
+        setIncomingMission(mission);
+        setAlertVisible(true);
+        setActiveMissions((prev) => [mission, ...prev.filter((m) => m.id !== mission.id)]);
+      }
     });
 
     const unsubStatus = onSocketEvent('mission:statusChanged', ({ missionId, status }) => {
@@ -102,26 +113,38 @@ export default function HeroDashboard() {
       );
     });
 
+    const unsubRealtimeMissions = subscribeToTable('missions', '*', (payload) => {
+      if (payload.new) {
+        const raw: any = payload.new;
+        const isForThisHero =
+          raw.assigned_hero_id === activeHero.id ||
+          raw.assignedHeroId === activeHero.id;
+
+        if (isForThisHero) {
+          triggerEmergencyDispatchAlert();
+          fetchLiveState();
+        }
+      }
+    });
+
     return () => {
       unsubMission();
       unsubStatus();
+      unsubRealtimeMissions.unsubscribe();
     };
-  }, []);
+  }, [activeHero.id, activeHero.codename]);
 
   const handleStatusToggle = async (nextStatus: HeroStatus) => {
     try {
-      await heroesApi.updateStatus(activeHero.id, nextStatus);
+      await updateHeroStatusInSupabase(activeHero.id, nextStatus);
     } catch {}
   };
-
-  // Hero identity is locked to the authenticated Google account.
-  // To change hero, the operative must sign out and log in with a different account.
 
   const handleAcceptMission = async (mission: Mission) => {
     setAlertVisible(false);
     setIncomingMission(null);
     try {
-      await missionsApi.updateStatus(mission.id, 'accepted');
+      await updateMissionStatusInSupabase(mission.id, 'accepted');
     } catch {}
     setActiveMissions((prev) =>
       prev.map((m) => (m.id === mission.id ? { ...m, status: 'accepted' } : m))
@@ -130,7 +153,7 @@ export default function HeroDashboard() {
 
   const handleMissionStatusChange = async (missionId: string, status: Mission['status']) => {
     try {
-      await missionsApi.updateStatus(missionId, status);
+      await updateMissionStatusInSupabase(missionId, status);
     } catch {}
     setActiveMissions((prev) =>
       prev.map((m) => (m.id === missionId ? { ...m, status } : m))
@@ -144,9 +167,13 @@ export default function HeroDashboard() {
   };
 
   // Missions assigned specifically to this authenticated hero
-  const assignedToActiveHero = activeMissions.filter(
-    (m) => m.assignedHeroId === activeHero.id
-  );
+  const assignedToActiveHero = activeMissions.filter((m) => {
+    if (!m) return false;
+    const matchesId = m.assignedHeroId === activeHero.id;
+    const matchesCodename =
+      m.assignedHero?.codename?.toLowerCase() === activeHero.codename?.toLowerCase();
+    return matchesId || matchesCodename;
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -295,41 +322,51 @@ export default function HeroDashboard() {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* Tactical Voice Comms Bar */}
+          <View style={[styles.voiceRadioCard, { borderColor: `${brandColor}50` }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.voiceRadioTag}>A.E.G.I.S. VOICE FREQUENCY // 144.95 MHz</Text>
+              <Text style={styles.voiceRadioTitle}>TACTICAL AI VOICE DISPATCH</Text>
+              <Text style={styles.voiceRadioSub}>Hold mic to transmit voice reports or ask AI</Text>
+            </View>
+            <MicButton
+              onStartRecord={async () => {
+                router.push('/chat');
+              }}
+              onStopRecord={async () => {}}
+            />
+          </View>
         </View>
 
         {/* Assigned Missions for Authenticated Hero */}
-        {assignedToActiveHero.length > 0 && (
-          <View style={{ marginBottom: 16 }}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: brandColor }]}>
-                ⚡ ASSIGNED DIRECTLY TO {activeHero.codename.toUpperCase()}
-              </Text>
-            </View>
-            {assignedToActiveHero.map((m) => (
+        <View style={{ marginBottom: 16 }}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: brandColor }]}>
+              ⚡ DISPATCHED MISSIONS FOR {activeHero.codename.toUpperCase()}
+            </Text>
+            <Text style={styles.sectionBadge}>{assignedToActiveHero.length} ASSIGNED</Text>
+          </View>
+
+          {assignedToActiveHero.length > 0 ? (
+            assignedToActiveHero.map((m) => (
               <MissionCard
-                key={`direct-${m.id}`}
+                key={m.id}
                 mission={m}
                 onAccept={() => handleAcceptMission(m)}
                 onStatusChange={(status) => handleMissionStatusChange(m.id, status)}
               />
-            ))}
-          </View>
-        )}
-
-        {/* All Sector Missions */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>ALL SECTOR EMERGENCIES</Text>
-          <Text style={styles.sectionBadge}>{activeMissions.length} TOTAL</Text>
+            ))
+          ) : (
+            <View style={styles.emptyHeroMissionsCard}>
+              <Text style={styles.emptyHeroIcon}>🛡️</Text>
+              <Text style={styles.emptyHeroTitle}>NO ACTIVE DISPATCHES</Text>
+              <Text style={styles.emptyHeroSub}>
+                Standing by in {activeHero.location?.label || 'HQ Sector'}. Command Center will alert your wristband when an emergency requiring {activeHero.codename}'s powers arises.
+              </Text>
+            </View>
+          )}
         </View>
-
-        {activeMissions.map((m) => (
-          <MissionCard
-            key={m.id}
-            mission={m}
-            onAccept={() => handleAcceptMission(m)}
-            onStatusChange={(status) => handleMissionStatusChange(m.id, status)}
-          />
-        ))}
 
         {/* Demo Dispatch Trigger Button */}
         <TouchableOpacity
@@ -410,26 +447,35 @@ const styles = StyleSheet.create({
   },
   heroCard: {
     backgroundColor: AegisColors.surface,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    marginBottom: 10,
-    gap: 12,
+    marginBottom: 12,
+    gap: 14,
+    ...(Platform.OS !== 'web'
+      ? {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.4,
+          shadowRadius: 10,
+          elevation: 5,
+        }
+      : {}),
   },
   avatarGlow: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarCore: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -441,53 +487,116 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   heroCodename: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '900',
     color: AegisColors.textPrimary,
+    letterSpacing: 0.5,
   },
   heroRealName: {
     fontSize: 11,
     color: AegisColors.textSecondary,
+    marginTop: 1,
   },
   heroLocation: {
     fontSize: 11,
-    marginTop: 2,
+    marginTop: 3,
     fontWeight: '700',
   },
   powersRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   powerBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
     borderWidth: 1,
   },
   powerBadgeText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   statusSwitcher: {
     flexDirection: 'row',
     gap: 8,
+    backgroundColor: '#0a0d18',
+    padding: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: AegisColors.border,
   },
   statusBtn: {
     flex: 1,
-    paddingVertical: 8,
-    backgroundColor: AegisColors.surface,
+    paddingVertical: 10,
+    backgroundColor: 'transparent',
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: AegisColors.border,
+    borderColor: 'transparent',
     alignItems: 'center',
   },
   statusBtnText: {
     fontSize: 10,
-    fontWeight: '800',
-    color: AegisColors.textSecondary,
+    fontWeight: '900',
+    color: AegisColors.textMuted,
     letterSpacing: 0.8,
+  },
+  voiceRadioCard: {
+    marginTop: 12,
+    backgroundColor: '#0a0d18',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  voiceRadioTag: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: AegisColors.accentBlue,
+    letterSpacing: 0.8,
+  },
+  voiceRadioTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: AegisColors.textPrimary,
+    marginTop: 2,
+    letterSpacing: 0.5,
+  },
+  voiceRadioSub: {
+    fontSize: 11,
+    color: AegisColors.textSecondary,
+    marginTop: 2,
+  },
+  emptyHeroMissionsCard: {
+    backgroundColor: AegisColors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: AegisColors.border,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  emptyHeroIcon: {
+    fontSize: 28,
+    marginBottom: 8,
+  },
+  emptyHeroTitle: {
+    color: AegisColors.textPrimary,
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  emptyHeroSub: {
+    color: AegisColors.textSecondary,
+    fontSize: 11,
+    textAlign: 'center',
+    lineHeight: 16,
   },
   sectionHeader: {
     flexDirection: 'row',

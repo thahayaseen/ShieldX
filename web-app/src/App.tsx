@@ -12,11 +12,21 @@ import { LoginScreen } from './components/LoginScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { onSocketEvent } from './lib/socket';
 import { heroesApi, missionsApi, incidentsApi } from './lib/api';
+import {
+  fetchHeroesFromSupabase,
+  fetchMissionsFromSupabase,
+  createMissionInSupabase,
+  subscribeToHeroesRealtime,
+  subscribeToMissionsRealtime,
+  updateHeroInSupabase,
+  formatDbHero,
+  formatDbMission,
+} from './lib/supabase';
 import type { Hero, Mission, Incident, HeroStatus, MissionStatus } from './types';
 
 const INITIAL_HEROES: Hero[] = [
   {
-    id: 'h-spiderman-1',
+    id: '11111111-0000-0000-0000-000000000001',
     name: 'Peter Parker',
     codename: 'Spider-Man',
     powers: ['Agility', 'Web-Slinging', 'Spider-Sense', 'Wall-Crawling'],
@@ -27,7 +37,7 @@ const INITIAL_HEROES: Hero[] = [
     updatedAt: '',
   },
   {
-    id: 'h-thor-1',
+    id: '22222222-0000-0000-0000-000000000002',
     name: 'Thor Odinson',
     codename: 'Thor',
     powers: ['Lightning', 'Flight', 'Super Strength'],
@@ -38,7 +48,7 @@ const INITIAL_HEROES: Hero[] = [
     updatedAt: '',
   },
   {
-    id: 'h-ironman-1',
+    id: '33333333-0000-0000-0000-000000000003',
     name: 'Tony Stark',
     codename: 'Iron Man',
     powers: ['Flight', 'Repulsors', 'Genius Intellect', 'Armor Systems'],
@@ -49,24 +59,13 @@ const INITIAL_HEROES: Hero[] = [
     updatedAt: '',
   },
   {
-    id: 'h-hulk-1',
+    id: '44444444-0000-0000-0000-000000000004',
     name: 'Bruce Banner',
     codename: 'Hulk',
     powers: ['Strength', 'Durability', 'Leaping', 'Rage'],
     status: 'busy',
     location: { lat: 11.2588, lng: 75.7804, label: 'Calicut City Center' },
     brandColor: '#2e7d32',
-    createdAt: '',
-    updatedAt: '',
-  },
-  {
-    id: 'h-cap-1',
-    name: 'Steve Rogers',
-    codename: 'Captain America',
-    powers: ['Shield Mastery', 'Tactics', 'Peak Human Strength'],
-    status: 'offline',
-    location: { lat: 11.2912, lng: 75.795, label: 'Kozhikode Beach' },
-    brandColor: '#0277bd',
     createdAt: '',
     updatedAt: '',
   },
@@ -91,15 +90,6 @@ const INITIAL_INCIDENTS: Incident[] = [
     status: 'dispatched',
     createdAt: new Date().toISOString(),
   },
-  {
-    id: 'inc-03',
-    title: 'Chemical Tanker Breach on Highway',
-    description: 'Tanker collision on NH66 Bypass spilling volatile liquid. Hazardous perimeter required.',
-    severity: 'medium',
-    location: { lat: 11.2721, lng: 75.8112, label: 'NH66 Bypass' },
-    status: 'reported',
-    createdAt: new Date().toISOString(),
-  },
 ];
 
 const INITIAL_MISSIONS: Mission[] = [
@@ -111,21 +101,8 @@ const INITIAL_MISSIONS: Mission[] = [
     status: 'pending',
     location: { lat: 11.2588, lng: 75.7804, label: 'Calicut City Center' },
     requiredPowers: ['Strength', 'Rescue', 'Durability'],
-    assignedHeroId: 'h-hulk-1',
+    assignedHeroId: '44444444-0000-0000-0000-000000000004',
     assignedHero: INITIAL_HEROES[3],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'm-102',
-    title: 'HARBOR ELECTRICAL ISOLATION',
-    description: 'Absorb and neutralize lightning discharges at Beypore Port terminal.',
-    priority: 'high',
-    status: 'en_route',
-    location: { lat: 11.2411, lng: 75.7725, label: 'Beypore Port' },
-    requiredPowers: ['Energy Absorption', 'Flight'],
-    assignedHeroId: 'h-thor-1',
-    assignedHero: INITIAL_HEROES[1],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
@@ -137,23 +114,65 @@ function CommandDashboard() {
   const [missions, setMissions] = useState<Mission[]>(INITIAL_MISSIONS);
   const [incidents, setIncidents] = useState<Incident[]>(INITIAL_INCIDENTS);
 
+  const reloadHeroesFromSupabase = async () => {
+    const liveHeroes = await fetchHeroesFromSupabase();
+    if (liveHeroes && liveHeroes.length > 0) {
+      setHeroes(liveHeroes);
+    }
+  };
+
+  const reloadMissionsFromSupabase = async () => {
+    const liveMissions = await fetchMissionsFromSupabase();
+    if (liveMissions && liveMissions.length > 0) {
+      setMissions(liveMissions);
+    }
+  };
+
   const fetchLiveState = async () => {
     try {
-      const [h, m, inc] = await Promise.allSettled([
-        heroesApi.getAll(),
-        missionsApi.getAll(),
+      await Promise.allSettled([
+        reloadHeroesFromSupabase(),
+        reloadMissionsFromSupabase(),
+      ]);
+
+      const [inc] = await Promise.allSettled([
         incidentsApi.getAll(),
       ]);
-      if (h.status === 'fulfilled' && h.value?.length) setHeroes(h.value);
-      if (m.status === 'fulfilled' && m.value?.length) setMissions(m.value);
       if (inc.status === 'fulfilled' && inc.value?.length) setIncidents(inc.value);
     } catch {
-      // fallback
+      // fallback to initial state
     }
   };
 
   useEffect(() => {
     fetchLiveState();
+
+    // Subscribe to realtime Supabase hero updates (new signups / approvals / status toggles)
+    const unsubRealtimeHeroes = subscribeToHeroesRealtime((payload) => {
+      if (payload?.new && payload?.new?.id) {
+        const updatedHero = formatDbHero(payload.new);
+        setHeroes((prev) => {
+          const exists = prev.some((h) => h.id === updatedHero.id);
+          if (exists) {
+            return prev.map((h) => (h.id === updatedHero.id ? updatedHero : h));
+          }
+          return [updatedHero, ...prev];
+        });
+      }
+      reloadHeroesFromSupabase();
+    });
+
+    // Subscribe to realtime Supabase mission updates (new dispatches)
+    const unsubRealtimeMissions = subscribeToMissionsRealtime((payload) => {
+      if (payload?.new && payload?.new?.id) {
+        const updatedMission = formatDbMission(payload.new);
+        setMissions((prev) => [
+          updatedMission,
+          ...prev.filter((m) => m.id !== updatedMission.id),
+        ]);
+      }
+      reloadMissionsFromSupabase();
+    });
 
     const unsubMission = onSocketEvent('mission:assigned', ({ mission }) => {
       setMissions((prev) => [mission, ...prev.filter((m) => m.id !== mission.id)]);
@@ -176,6 +195,8 @@ function CommandDashboard() {
     });
 
     return () => {
+      unsubRealtimeHeroes();
+      unsubRealtimeMissions();
       unsubMission();
       unsubMissionStatus();
       unsubHero();
@@ -188,10 +209,18 @@ function CommandDashboard() {
       prev.map((h) => (h.id === heroId ? { ...h, status } : h))
     );
     try {
+      await updateHeroInSupabase(heroId, { status });
       await heroesApi.updateStatus(heroId, status);
     } catch {
       // ignore
     }
+  };
+
+  const handleUpdateHeroLocal = (updatedHero: Hero) => {
+    setHeroes((prev) => [
+      updatedHero,
+      ...prev.filter((h) => h.id !== updatedHero.id),
+    ]);
   };
 
   const handleUpdateMissionStatus = async (missionId: string, status: MissionStatus) => {
@@ -224,10 +253,26 @@ function CommandDashboard() {
   };
 
   const handleDispatchMission = async (newMission: Mission) => {
+    // 1. Optimistic UI update on Command Center dashboard
     setMissions((prev) => [newMission, ...prev]);
     setIncidents((prev) =>
       prev.map((i) => (i.id === newMission.incidentId ? { ...i, status: 'dispatched' } : i))
     );
+
+    // 2. Persist to Supabase DB -> broadcasts Realtime WebSocket to Mobile Hero Wristband!
+    const created = await createMissionInSupabase({
+      title: newMission.title,
+      description: newMission.description,
+      priority: newMission.priority,
+      location: newMission.location,
+      requiredPowers: newMission.requiredPowers,
+      assignedHeroId: newMission.assignedHeroId || newMission.assignedHero?.id,
+      aiReasoning: newMission.aiReasoning,
+    });
+
+    if (created) {
+      setMissions((prev) => [created, ...prev.filter((m) => m.id !== newMission.id)]);
+    }
   };
 
   const criticalAlerts = incidents.filter((i) => i.severity === 'critical').length;
@@ -258,7 +303,12 @@ function CommandDashboard() {
           )}
 
           {activePage === 'heroes' && (
-            <Heroes heroes={heroes} onUpdateStatus={handleUpdateHeroStatus} />
+            <Heroes
+              heroes={heroes}
+              onUpdateStatus={handleUpdateHeroStatus}
+              onRefreshHeroes={reloadHeroesFromSupabase}
+              onUpdateHeroLocal={handleUpdateHeroLocal}
+            />
           )}
 
           {activePage === 'missions' && (

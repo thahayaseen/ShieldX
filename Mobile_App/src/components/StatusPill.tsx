@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { AegisColors, getStatusColor } from '@/constants/theme';
+import { View, Text, StyleSheet, Platform } from 'react-native';
+import { getStatusColor } from '@/constants/theme';
 import type { HeroStatus } from '@/types';
 
 interface StatusPillProps {
@@ -17,9 +17,13 @@ export const StatusPill: React.FC<StatusPillProps> = ({ status, size = 'md' }) =
       style={[
         styles.pill,
         size === 'sm' ? styles.pillSm : styles.pillMd,
-        { borderColor: `${color}40`, backgroundColor: `${color}15` },
+        { borderColor: `${color}60`, backgroundColor: `${color}18` },
+        Platform.OS === 'web' ? ({ boxShadow: `0 0 12px ${color}35` } as any) : {},
       ]}>
-      <View style={[styles.dot, { backgroundColor: color }]} />
+      <View style={styles.dotContainer}>
+        <View style={[styles.dotPulse, { backgroundColor: color }]} />
+        <View style={[styles.dotCore, { backgroundColor: color }]} />
+      </View>
       <Text style={[styles.text, size === 'sm' ? styles.textSm : styles.textMd, { color }]}>
         {label}
       </Text>
@@ -31,32 +35,45 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
   },
   pillSm: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    gap: 4,
+    paddingVertical: 3,
+    gap: 5,
   },
   pillMd: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    gap: 7,
   },
-  dot: {
+  dotContainer: {
+    width: 10,
+    height: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dotPulse: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    opacity: 0.35,
+  },
+  dotCore: {
     width: 6,
     height: 6,
     borderRadius: 3,
   },
   text: {
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontWeight: '900',
+    letterSpacing: 0.8,
   },
   textSm: {
-    fontSize: 10,
+    fontSize: 9,
   },
   textMd: {
-    fontSize: 12,
+    fontSize: 11,
   },
 });

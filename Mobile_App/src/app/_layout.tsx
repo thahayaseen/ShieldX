@@ -7,12 +7,13 @@ import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { AuthScreen } from '@/components/AuthScreen';
+import { PendingApprovalScreen } from '@/components/PendingApprovalScreen';
 import { AegisColors } from '@/constants/theme';
 
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isPendingApproval, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -24,6 +25,11 @@ function RootNavigator() {
 
   if (!isAuthenticated) {
     return <AuthScreen />;
+  }
+
+  // Authenticated but hero not yet verified by admin
+  if (isPendingApproval) {
+    return <PendingApprovalScreen />;
   }
 
   return (
