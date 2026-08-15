@@ -20,18 +20,25 @@ serve(async (req) => {
   let mcpTransport: SSEClientTransport | null = null;
 
   try {
-    // Read the request body as JSON (expecting base64 audio and mimeType)
-    const { audio, mimeType = "audio/mp3" } = await req.json();
+    // Read the request body as JSON
+    const { audio, mimeType = "audio/mp3", text: userText } = await req.json();
 
-    if (!audio) {
-      throw new Error("Missing audio data in request body.");
+    if (!audio && !userText) {
+      throw new Error("Missing audio or text data in request body.");
     }
 
     console.log(`Connecting to remote MCP Server at ${MCP_SERVER_URL}...`);
     mcpTransport = new SSEClientTransport(new URL(MCP_SERVER_URL));
-    const mcpClient = new Client({ name: "voice-agent", version: "1.0.0" }, { capabilities: {} });
-    await mcpClient.connect(mcpTransport);
-    console.log("Connected to MCP Server!");
+    const mcpClient = new Client({ name: "agent", version: "1.0.0" }, { capabilities: {} });
+    
+    try {
+      await mcpClient.connect(mcpTransport);
+      console.log("Connected to MCP Server!");
+    } catch (connError: any) {
+      console.error("❌ Failed to connect to MCP Server. Check if the URL is correct and the server is running.");
+      console.error("Connection Error Details:", connError);
+      throw new Error(`Failed to connect to remote MCP Server at ${MCP_SERVER_URL}: ${connError.message}`);
+    }
 
     // Dynamically fetch all tools from the remote VPS server
     const { tools: mcpTools } = await mcpClient.listTools();
@@ -43,20 +50,30 @@ serve(async (req) => {
       parameters: t.inputSchema as any,
     }));
 
-    const prompt = "Listen to the user's voice request and answer them. Use your tools if necessary.";
+    // Build the user parts array depending on what they provided
+    const userParts: any[] = [];
+    if (audio) {
+      userParts.push({ inlineData: { mimeType: mimeType, data: audio } });
+    }
+    if (userText) {
+      userParts.push({ text: userText });
+    }
     
-    console.log("Sending audio to Gemini...");
+    // Always append instructions so Gemini knows what to do
+    userParts.push({ text: "Listen to or read the user's request and answer them. Use your tools if necessary." });
+
+    console.log(`Sending ${audio ? 'audio' : ''} ${userText ? 'text' : ''} to Gemini...`);
+    
+    const requestContents = [
+      {
+        role: "user",
+        parts: userParts,
+      }
+    ];
+
     const response = await ai.models.generateContent({
       model: "gemini-1.5-pro",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { inlineData: { mimeType: mimeType, data: audio } },
-            { text: prompt },
-          ],
-        },
-      ],
+      contents: requestContents,
       config: {
         tools: [{ functionDeclarations: geminiTools }],
       },
@@ -81,13 +98,7 @@ serve(async (req) => {
       const followUpResponse = await ai.models.generateContent({
         model: "gemini-1.5-pro",
         contents: [
-          {
-            role: "user",
-            parts: [
-              { inlineData: { mimeType: mimeType, data: audio } },
-              { text: prompt },
-            ],
-          },
+          ...requestContents,
           {
             role: "model",
             parts: [{ functionCall: call }],
