@@ -1,12 +1,27 @@
-import React from 'react';
-import type { Mission, MissionStatus } from '../types';
+import React, { useState } from 'react';
+import type { Hero, Mission, MissionStatus, Priority } from '../types';
 
 interface MissionsProps {
   missions: Mission[];
+  heroes?: Hero[];
   onUpdateStatus: (missionId: string, status: MissionStatus) => void;
+  onDispatchMission?: (mission: Mission) => void;
 }
 
-export const Missions: React.FC<MissionsProps> = ({ missions, onUpdateStatus }) => {
+export const Missions: React.FC<MissionsProps> = ({
+  missions,
+  heroes = [],
+  onUpdateStatus,
+  onDispatchMission,
+}) => {
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState<Priority>('critical');
+  const [locationLabel, setLocationLabel] = useState('Calicut Sector 1');
+  const [assignedHeroId, setAssignedHeroId] = useState<string>('');
+  const [requiredPowersStr, setRequiredPowersStr] = useState('Tactical Response, Rescue');
+
   const columns: { id: MissionStatus; title: string; color: string }[] = [
     { id: 'pending', title: 'DISPATCH PENDING', color: '#ff3860' },
     { id: 'accepted', title: 'ACCEPTED // PREP', color: '#ffd54f' },
@@ -14,14 +29,140 @@ export const Missions: React.FC<MissionsProps> = ({ missions, onUpdateStatus }) 
     { id: 'complete', title: 'RESOLVED / DEBRIEF', color: '#00e676' },
   ];
 
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title || !onDispatchMission) return;
+
+    const selectedHero = heroes.find((h) => h.id === assignedHeroId) || heroes[0];
+
+    const newMission: Mission = {
+      id: `m-${Date.now()}`,
+      title,
+      description,
+      priority,
+      status: 'pending',
+      location: { lat: 11.2588, lng: 75.7804, label: locationLabel },
+      requiredPowers: requiredPowersStr.split(',').map((s) => s.trim()).filter(Boolean),
+      assignedHeroId: selectedHero?.id,
+      assignedHero: selectedHero,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    onDispatchMission(newMission);
+    setTitle('');
+    setDescription('');
+    setShowCreateForm(false);
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>TACTICAL MISSION KANBAN</h1>
-          <p style={styles.subtitle}>REAL-TIME MISSION LIFECYCLE TRACKING</p>
+          <p style={styles.subtitle}>REAL-TIME MISSION LIFECYCLE TRACKING & DIRECT DISPATCH</p>
         </div>
+        {onDispatchMission && (
+          <button
+            className="hud-btn hud-btn-critical"
+            onClick={() => setShowCreateForm(!showCreateForm)}>
+            {showCreateForm ? 'CANCEL' : '🚨 DISPATCH NEW MISSION'}
+          </button>
+        )}
       </div>
+
+      {/* Direct Mission Dispatch Form */}
+      {showCreateForm && (
+        <form className="hud-panel" onSubmit={handleCreateSubmit} style={styles.form}>
+          <h3 style={styles.formTitle}>⚡ CREATE & TRANSMIT TACTICAL MISSION</h3>
+          <div style={styles.formGrid}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>MISSION TITLE</label>
+              <input
+                type="text"
+                placeholder="e.g. Building Extraction - Sector 4"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                style={styles.input}
+                required
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>PRIORITY TIER</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as Priority)}
+                style={styles.input}>
+                <option value="critical">CRITICAL (Tier 1)</option>
+                <option value="high">HIGH (Tier 2)</option>
+                <option value="medium">MEDIUM (Tier 3)</option>
+                <option value="low">LOW (Tier 4)</option>
+              </select>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>ASSIGN OPERATIVE (HERO)</label>
+              <select
+                value={assignedHeroId}
+                onChange={(e) => setAssignedHeroId(e.target.value)}
+                style={styles.input}>
+                <option value="">-- SELECT HERO --</option>
+                {heroes.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    ⚡ {h.codename} ({h.status.toUpperCase()})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>LOCATION / SECTOR</label>
+              <input
+                type="text"
+                placeholder="e.g. Calicut Harbor Terminal 3"
+                value={locationLabel}
+                onChange={(e) => setLocationLabel(e.target.value)}
+                style={styles.input}
+              />
+            </div>
+
+            <div style={{ ...styles.formGroup, gridColumn: 'span 2' }}>
+              <label style={styles.label}>REQUIRED ABILITIES (Comma separated)</label>
+              <input
+                type="text"
+                placeholder="e.g. Super Strength, Flight, Heavy Lifting"
+                value={requiredPowersStr}
+                onChange={(e) => setRequiredPowersStr(e.target.value)}
+                style={styles.input}
+              />
+            </div>
+
+            <div style={{ ...styles.formGroup, gridColumn: 'span 3' }}>
+              <label style={styles.label}>TACTICAL BRIEFING & INSTRUCTIONS</label>
+              <textarea
+                rows={3}
+                placeholder="Mission details, evacuation orders, hazard warnings..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                style={{ ...styles.input, resize: 'vertical' }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
+            <button
+              type="button"
+              className="hud-btn"
+              onClick={() => setShowCreateForm(false)}>
+              CANCEL
+            </button>
+            <button type="submit" className="hud-btn hud-btn-critical">
+              ⚡ TRANSMIT MISSION TO HERO (WRISTBAND ALERT)
+            </button>
+          </div>
+        </form>
+      )}
 
       <div style={styles.kanbanGrid}>
         {columns.map((col) => {
@@ -116,6 +257,7 @@ const styles: Record<string, React.CSSProperties> = {
   header: {
     display: 'flex',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   title: {
     fontSize: '18px',
@@ -129,6 +271,45 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#8493b2',
     letterSpacing: '0.8px',
     margin: '4px 0 0 0',
+  },
+  form: {
+    backgroundColor: '#0a0e1c',
+    border: '1px solid #ff3860',
+    padding: '20px',
+    borderRadius: '8px',
+  },
+  formTitle: {
+    fontSize: '14px',
+    fontWeight: 900,
+    letterSpacing: '1px',
+    color: '#ff3860',
+    marginTop: 0,
+    marginBottom: '16px',
+  },
+  formGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '14px',
+  },
+  formGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+  },
+  label: {
+    fontSize: '10px',
+    fontWeight: 800,
+    color: '#8493b2',
+    letterSpacing: '0.8px',
+  },
+  input: {
+    backgroundColor: '#131b31',
+    border: '1px solid #1e2b4d',
+    color: '#f0f4fc',
+    padding: '10px',
+    borderRadius: '4px',
+    fontSize: '13px',
+    outline: 'none',
   },
   kanbanGrid: {
     display: 'grid',

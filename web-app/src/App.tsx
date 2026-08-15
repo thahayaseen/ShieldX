@@ -8,17 +8,21 @@ import { Missions } from './pages/Missions';
 import { Incidents } from './pages/Incidents';
 import { AiDispatch } from './pages/AiDispatch';
 import { AIChat } from './pages/AIChat';
+import { CreateMissionModal } from './components/CreateMissionModal';
 import { LoginScreen } from './components/LoginScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { onSocketEvent } from './lib/socket';
-import { heroesApi, incidentsApi } from './lib/api';
+import { heroesApi } from './lib/api';
 import {
   fetchHeroesFromSupabase,
   fetchMissionsFromSupabase,
+  fetchIncidentsFromSupabase,
+  reportIncidentToSupabase,
   createMissionInSupabase,
   updateMissionStatusInSupabase,
   subscribeToHeroesRealtime,
   subscribeToMissionsRealtime,
+  subscribeToIncidentsRealtime,
   updateHeroInSupabase,
   formatDbHero,
   formatDbMission,
@@ -77,6 +81,7 @@ function CommandDashboard() {
   const [heroes, setHeroes] = useState<Hero[]>(INITIAL_HEROES);
   const [missions, setMissions] = useState<Mission[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [isCreateMissionOpen, setIsCreateMissionOpen] = useState(false);
 
   const reloadHeroesFromSupabase = async () => {
     const liveHeroes = await fetchHeroesFromSupabase();
@@ -92,19 +97,22 @@ function CommandDashboard() {
     }
   };
 
+  const reloadIncidentsFromSupabase = async () => {
+    const liveIncidents = await fetchIncidentsFromSupabase();
+    if (liveIncidents && liveIncidents.length > 0) {
+      setIncidents(liveIncidents);
+    }
+  };
+
   const fetchLiveState = async () => {
     try {
       await Promise.allSettled([
         reloadHeroesFromSupabase(),
         reloadMissionsFromSupabase(),
+        reloadIncidentsFromSupabase(),
       ]);
-
-      const [inc] = await Promise.allSettled([
-        incidentsApi.getAll(),
-      ]);
-      if (inc.status === 'fulfilled' && inc.value?.length) setIncidents(inc.value);
     } catch {
-      // fallback to initial state
+      // fallback
     }
   };
 
@@ -136,6 +144,26 @@ function CommandDashboard() {
       }
     });
 
+    // Subscribe to realtime Supabase incident updates
+    const unsubRealtimeIncidents = subscribeToIncidentsRealtime((payload) => {
+      if (payload?.new && payload?.new?.id) {
+        const rawInc: any = payload.new;
+        const updatedInc: Incident = {
+          id: rawInc.id,
+          title: rawInc.title || 'Incident',
+          description: rawInc.description || '',
+          severity: rawInc.severity || 'critical',
+          location: rawInc.location || { lat: 11.2588, lng: 75.7804, label: 'Sector' },
+          status: rawInc.status || 'reported',
+          createdAt: rawInc.created_at || new Date().toISOString(),
+        };
+        setIncidents((prev) => [
+          updatedInc,
+          ...prev.filter((i) => i.id !== updatedInc.id),
+        ]);
+      }
+    });
+
     const unsubMission = onSocketEvent('mission:assigned', ({ mission }) => {
       setMissions((prev) => [mission, ...prev.filter((m) => m.id !== mission.id)]);
     });
@@ -159,6 +187,7 @@ function CommandDashboard() {
     return () => {
       unsubRealtimeHeroes();
       unsubRealtimeMissions();
+      unsubRealtimeIncidents();
       unsubMission();
       unsubMissionStatus();
       unsubHero();
@@ -193,20 +222,20 @@ function CommandDashboard() {
   };
 
   const handleReportIncident = async (inc: Partial<Incident>) => {
-    const newInc: Incident = {
-      id: `inc-${Date.now()}`,
-      title: inc.title || 'Untitled Emergency',
-      description: inc.description || '',
-      severity: inc.severity || 'critical',
-      location: inc.location || { lat: 11.2588, lng: 75.7804, label: 'Sector' },
-      status: 'reported',
-      createdAt: new Date().toISOString(),
-    };
-    setIncidents((prev) => [newInc, ...prev]);
-    try {
-      await incidentsApi.report(newInc);
-    } catch {
-      // ignore
+    const created = await reportIncidentToSupabase(inc);
+    if (created) {
+      setIncidents((prev) => [created, ...prev.filter((i) => i.id !== created.id)]);
+    } else {
+      const fallbackInc: Incident = {
+        id: `inc-${Date.now()}`,
+        title: inc.title || 'Untitled Emergency',
+        description: inc.description || '',
+        severity: inc.severity || 'critical',
+        location: inc.location || { lat: 11.2588, lng: 75.7804, label: 'Sector' },
+        status: 'reported',
+        createdAt: new Date().toISOString(),
+      };
+      setIncidents((prev) => [fallbackInc, ...prev]);
     }
   };
 
@@ -247,7 +276,10 @@ function CommandDashboard() {
       />
 
       <div className="main-content">
-        <TopBar criticalAlertCount={criticalAlerts} />
+        <TopBar
+          criticalAlertCount={criticalAlerts}
+          onOpenCreateMission={() => setIsCreateMissionOpen(true)}
+        />
 
         <main className="page-container">
           {activePage === 'overview' && (
@@ -257,6 +289,7 @@ function CommandDashboard() {
               incidents={incidents}
               onNavigateToDispatch={() => setActivePage('dispatch')}
               onNavigateToChat={() => setActivePage('chat')}
+              onOpenCreateMission={() => setIsCreateMissionOpen(true)}
             />
           )}
 
@@ -270,7 +303,12 @@ function CommandDashboard() {
           )}
 
           {activePage === 'missions' && (
-            <Missions missions={missions} onUpdateStatus={handleUpdateMissionStatus} />
+            <Missions
+              missions={missions}
+              heroes={heroes}
+              onUpdateStatus={handleUpdateMissionStatus}
+              onDispatchMission={handleDispatchMission}
+            />
           )}
 
           {activePage === 'incidents' && (
@@ -288,6 +326,16 @@ function CommandDashboard() {
           {activePage === 'chat' && <AIChat />}
         </main>
       </div>
+
+      <CreateMissionModal
+        heroes={heroes}
+        isOpen={isCreateMissionOpen}
+        onClose={() => setIsCreateMissionOpen(false)}
+        onDispatch={(newMission) => {
+          handleDispatchMission(newMission);
+          setIsCreateMissionOpen(false);
+        }}
+      />
     </div>
   );
 }

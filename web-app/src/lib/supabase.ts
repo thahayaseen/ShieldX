@@ -1,6 +1,6 @@
 // A.E.G.I.S. – Supabase Client & Realtime Helpers (web-app)
 import { createClient } from '@supabase/supabase-js';
-import type { Hero, HeroStatus, Mission, MissionStatus, Priority } from '../types';
+import type { Hero, HeroStatus, Mission, MissionStatus, Priority, Incident } from '../types';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
@@ -138,6 +138,80 @@ export async function fetchMissionsFromSupabase(): Promise<Mission[]> {
   }
 }
 
+/**
+ * Fetch all emergency incidents directly from live Supabase database
+ */
+export async function fetchIncidentsFromSupabase(): Promise<Incident[]> {
+  try {
+    const { data, error } = await supabase
+      .from('incidents')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error || !data) {
+      return [];
+    }
+
+    return data.map((inc: any) => ({
+      id: inc.id,
+      title: inc.title || 'Emergency Incident',
+      description: inc.description || '',
+      severity: inc.severity || 'critical',
+      location: inc.location
+        ? {
+            lat: inc.location.lat ?? 11.2588,
+            lng: inc.location.lng ?? 75.7804,
+            label: inc.location.label || inc.location.city || 'Calicut Sector',
+          }
+        : { lat: 11.2588, lng: 75.7804, label: 'Calicut Sector' },
+      status: inc.status || 'reported',
+      createdAt: inc.created_at || new Date().toISOString(),
+    }));
+  } catch (err) {
+    console.error('[AEGIS Supabase] fetchIncidents error:', err);
+    return [];
+  }
+}
+
+/**
+ * Report a new emergency incident to Supabase database.
+ */
+export async function reportIncidentToSupabase(inc: Partial<Incident>): Promise<Incident | null> {
+  try {
+    const insertObj = {
+      title: inc.title || 'NEW EMERGENCY INCIDENT',
+      description: inc.description || '',
+      severity: inc.severity || 'critical',
+      location: inc.location || { city: 'Calicut', lat: 11.2588, lng: 75.7804 },
+      status: 'reported',
+    };
+
+    const { data, error } = await supabase
+      .from('incidents')
+      .insert(insertObj)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('[AEGIS Supabase] Report incident error:', error.message);
+      return null;
+    }
+
+    return {
+      id: data.id,
+      title: data.title,
+      description: data.description,
+      severity: data.severity,
+      location: data.location,
+      status: data.status,
+      createdAt: data.created_at,
+    };
+  } catch (err) {
+    console.error('[AEGIS Supabase] reportIncident error:', err);
+    return null;
+  }
+}
+
 export async function sendFcmPushNotification(fcmToken: string, title: string, body: string) {
   const fcmServerKey = import.meta.env.VITE_FCM_SERVER_KEY || 'AIzaSyAj_mN-m1kXEfBDN0kgxMkfitkKrVd4cbY';
   try {
@@ -175,8 +249,7 @@ export async function sendFcmPushNotification(fcmToken: string, title: string, b
 
 /**
  * Create & dispatch a new mission directly into Supabase database.
- * Broadcasts via Supabase Realtime so the mobile hero app instantly vibrates & beeps,
- * and sends an FCM push notification using the configured Firebase FCM key.
+ * Automatically links Incident -> Mission -> Hero Status across the entire system.
  */
 export async function createMissionInSupabase(mission: Partial<Mission>): Promise<Mission | null> {
   try {
@@ -188,6 +261,7 @@ export async function createMissionInSupabase(mission: Partial<Mission>): Promis
       status: 'dispatched',
       required_powers: mission.requiredPowers || [],
       assigned_hero_id: mission.assignedHeroId,
+      incident_id: mission.incidentId,
       ai_reasoning: mission.aiReasoning || 'Dispatched via A.E.G.I.S. Command Center',
     };
 
@@ -202,8 +276,22 @@ export async function createMissionInSupabase(mission: Partial<Mission>): Promis
       return null;
     }
 
-    // Fetch assigned hero FCM token and send push notification
+    // 1. AUTOMATICALLY CONNECTED: Update linked incident status to 'dispatched'
+    if (mission.incidentId) {
+      await supabase
+        .from('incidents')
+        .update({ status: 'dispatched' })
+        .eq('id', mission.incidentId);
+    }
+
+    // 2. AUTOMATICALLY CONNECTED: Update assigned hero status to 'on_mission'
     if (mission.assignedHeroId) {
+      await supabase
+        .from('heroes')
+        .update({ status: 'on_mission', updated_at: new Date().toISOString() })
+        .eq('id', mission.assignedHeroId);
+
+      // 3. Send FCM Push Notification to wristband
       const { data: heroData } = await supabase
         .from('heroes')
         .select('name, codename, fcm_token')
@@ -228,7 +316,7 @@ export async function createMissionInSupabase(mission: Partial<Mission>): Promis
 
 /**
  * Update Mission Status directly in Supabase database.
- * Broadcasts via Realtime to mobile app and command center.
+ * Automatically synchronizes Hero Status & Linked Incident Status when completed!
  */
 export async function updateMissionStatusInSupabase(
   missionId: string,
@@ -247,6 +335,13 @@ export async function updateMissionStatusInSupabase(
 
     const dbStatus = dbStatusMap[status] || status;
 
+    // Fetch existing mission record to resolve hero_id & incident_id
+    const { data: existingMission } = await supabase
+      .from('missions')
+      .select('id, assigned_hero_id, incident_id')
+      .eq('id', missionId)
+      .single();
+
     const { error } = await supabase
       .from('missions')
       .update({ status: dbStatus, updated_at: new Date().toISOString() })
@@ -256,6 +351,37 @@ export async function updateMissionStatusInSupabase(
       console.error('[AEGIS Supabase] Failed to update mission status:', error.message);
       return false;
     }
+
+    // AUTOMATICALLY CONNECTED LIFECYCLE UPDATES
+    if (existingMission) {
+      const heroId = existingMission.assigned_hero_id;
+      const incidentId = existingMission.incident_id;
+
+      if ((status as any) === 'complete' || (status as any) === 'completed') {
+        // Mission Completed: Hero becomes Available & Incident becomes Resolved!
+        if (heroId) {
+          await supabase
+            .from('heroes')
+            .update({ status: 'available', updated_at: new Date().toISOString() })
+            .eq('id', heroId);
+        }
+        if (incidentId) {
+          await supabase
+            .from('incidents')
+            .update({ status: 'resolved' })
+            .eq('id', incidentId);
+        }
+      } else if (status === 'accepted' || status === 'en_route' || status === 'arrived') {
+        // Active Mission: Hero status set to 'on_mission'
+        if (heroId) {
+          await supabase
+            .from('heroes')
+            .update({ status: 'on_mission', updated_at: new Date().toISOString() })
+            .eq('id', heroId);
+        }
+      }
+    }
+
     return true;
   } catch (err) {
     console.error('[AEGIS Supabase] updateMissionStatus error:', err);
@@ -265,7 +391,6 @@ export async function updateMissionStatusInSupabase(
 
 /**
  * Approve & update a hero record in Supabase database.
- * Tries RPC `admin_update_hero` first (bypasses RLS), then falls back to direct table update.
  */
 export async function updateHeroInSupabase(
   heroId: string,
@@ -335,13 +460,10 @@ export function subscribeToHeroesRealtime(onHeroesChanged: (payload: any) => voi
       'postgres_changes',
       { event: '*', schema: 'public', table: 'heroes' },
       (payload) => {
-        console.log('[AEGIS Realtime WebSocket] Received heroes change:', payload);
         onHeroesChanged(payload);
       }
     )
-    .subscribe((status) => {
-      console.log('[AEGIS Realtime WebSocket] Heroes subscription status:', status);
-    });
+    .subscribe();
 
   return () => {
     supabase.removeChannel(channel);
@@ -358,8 +480,27 @@ export function subscribeToMissionsRealtime(onMissionsChanged: (payload: any) =>
       'postgres_changes',
       { event: '*', schema: 'public', table: 'missions' },
       (payload) => {
-        console.log('[AEGIS Realtime WebSocket] Received missions change:', payload);
         onMissionsChanged(payload);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+/**
+ * Realtime WebSocket listener for live postgres_changes on table incidents
+ */
+export function subscribeToIncidentsRealtime(onIncidentsChanged: (payload: any) => void) {
+  const channel = supabase
+    .channel('realtime:incidents:dashboard')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'incidents' },
+      (payload) => {
+        onIncidentsChanged(payload);
       }
     )
     .subscribe();

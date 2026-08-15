@@ -3,9 +3,10 @@ import { useAuth } from '../context/AuthContext';
 
 interface TopBarProps {
   criticalAlertCount: number;
+  onOpenCreateMission?: () => void;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ criticalAlertCount }) => {
+export const TopBar: React.FC<TopBarProps> = ({ criticalAlertCount, onOpenCreateMission }) => {
   const { userEmail, clearanceLevel, logout } = useAuth();
   const [time, setTime] = useState<string>('');
 
@@ -44,6 +45,15 @@ export const TopBar: React.FC<TopBarProps> = ({ criticalAlertCount }) => {
 
       {/* Right Telemetry & Auth User Profile */}
       <div style={styles.metaRow}>
+        {onOpenCreateMission && (
+          <button
+            className="hud-btn hud-btn-critical"
+            style={{ fontSize: '11px', padding: '6px 14px' }}
+            onClick={onOpenCreateMission}>
+            ⚡ DISPATCH MISSION
+          </button>
+        )}
+
         <div style={styles.telemetryPill}>
           <span style={styles.metaLabel}>CLEARANCE:</span>
           <span style={styles.metaVal}>{clearanceLevel}</span>

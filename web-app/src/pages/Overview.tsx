@@ -7,6 +7,7 @@ interface OverviewProps {
   incidents: Incident[];
   onNavigateToDispatch: (incidentId?: string) => void;
   onNavigateToChat: () => void;
+  onOpenCreateMission?: () => void;
 }
 
 export const Overview: React.FC<OverviewProps> = ({
@@ -15,6 +16,7 @@ export const Overview: React.FC<OverviewProps> = ({
   incidents,
   onNavigateToDispatch,
   onNavigateToChat,
+  onOpenCreateMission,
 }) => {
   const onlineHeroes = heroes.filter((h) => h.status === 'online');
   const onMissionHeroes = heroes.filter((h) => h.status === 'on_mission' || h.status === 'busy');
@@ -63,9 +65,16 @@ export const Overview: React.FC<OverviewProps> = ({
         <div className="hud-panel" style={{ flex: 1 }}>
           <div style={styles.panelHeader}>
             <h2 style={styles.panelTitle}>🚨 INCOMING INCIDENT RADAR</h2>
-            <button className="hud-btn hud-btn-primary" onClick={() => onNavigateToDispatch()}>
-              AI AUTO-DISPATCH
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {onOpenCreateMission && (
+                <button className="hud-btn hud-btn-critical" onClick={onOpenCreateMission}>
+                  ⚡ DISPATCH NEW MISSION
+                </button>
+              )}
+              <button className="hud-btn hud-btn-primary" onClick={() => onNavigateToDispatch()}>
+                AI AUTO-DISPATCH
+              </button>
+            </div>
           </div>
 
           <div style={styles.list}>
