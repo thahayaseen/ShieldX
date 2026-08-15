@@ -1,7 +1,9 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import express from 'express';
+import cors from 'cors';
 
 import { getHeroStatus } from './tools/heroes.js';
 import { getActiveMissions, getHeroAssignment } from './tools/missions.js';
@@ -165,9 +167,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error('A.E.G.I.S. MCP Server running on stdio');
+  const app = express();
+  app.use(cors());
+  
+  let transport: SSEServerTransport;
+
+  app.get('/mcp/sse', async (req, res) => {
+    console.log('New SSE connection established');
+    transport = new SSEServerTransport('/mcp/messages', res as any);
+    await server.connect(transport);
+  });
+
+  app.post('/mcp/messages', async (req, res) => {
+    if (!transport) {
+      res.status(400).send('SSE Connection not established yet');
+      return;
+    }
+    await transport.handlePostMessage(req, res as any);
+  });
+
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`A.E.G.I.S. MCP Server running on SSE at http://localhost:${PORT}/mcp/sse`);
+  });
 }
 
 main().catch(console.error);
