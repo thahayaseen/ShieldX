@@ -111,7 +111,8 @@ export interface ChatRequest {
 }
 
 export interface ChatVoiceRequest {
-  audio: string;        // base64-encoded .m4a
+  audio: string;        // base64-encoded audio
+  mimeType?: string;
   sessionId?: string;
 }
 
