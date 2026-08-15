@@ -6,7 +6,6 @@
 // ============================================================
 
 import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
@@ -94,7 +93,11 @@ export async function signInWithGoogle(): Promise<{ error?: string }> {
       return {};
     }
 
-    const redirectUrl = Linking.createURL('auth/callback');
+    // Use tinkerproject://callback (no sub-path).
+    // tinkerproject://auth/callback is REJECTED by Supabase because it parses
+    // 'auth' as the host and '/callback' as a path, so the wildcard
+    // tinkerproject://* won't match it. tinkerproject://callback works.
+    const redirectUrl = 'tinkerproject://callback';
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
@@ -118,11 +121,13 @@ export async function signInWithGoogle(): Promise<{ error?: string }> {
           refresh_token,
         });
         if (sessionError) throw sessionError;
-      } else {
-        throw new Error('Sign-in cancelled or token not received.');
       }
+      // If no tokens in the URL, Android delivered them via deep link intent
+      // to the /callback route — nothing to do here, AuthContext will react.
     } else if (result.type === 'cancel' || result.type === 'dismiss') {
-      throw new Error('Sign-in was cancelled.');
+      // On Android the OS intercepts the deep link and opens the app directly
+      // via intent — openAuthSessionAsync sees this as 'cancel'.
+      // Expected: the /callback route handles the tokens.
     }
 
     return {};

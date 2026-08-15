@@ -10,7 +10,7 @@
 // The frontend NEVER calls the MCP Server directly.
 // ============================================================
 
-import { Audio } from 'expo-av';
+import { AudioRecorder, RecordingPresets, requestMicrophonePermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
 
 import { chatApi } from './api';
@@ -53,24 +53,29 @@ export async function sendTextMessage(
 
 // ─── Voice recording ─────────────────────────────────────────
 
-let recording: Audio.Recording | null = null;
+let recorder: AudioRecorder | null = null;
 
 /** Request mic permission and start recording. */
 export async function startRecording(): Promise<void> {
-  const { status } = await Audio.requestPermissionsAsync();
+  // Request mic permission — shows the system dialog on first call
+  const { status, canAskAgain } = await requestMicrophonePermissionsAsync();
   if (status !== 'granted') {
-    throw new Error('Microphone permission denied');
+    throw new Error(
+      canAskAgain
+        ? 'Microphone permission denied. Please allow microphone access.'
+        : 'Microphone access is blocked. Enable it in device Settings → Apps → ShieldX → Permissions.'
+    );
   }
 
-  await Audio.setAudioModeAsync({
+  // Set audio mode for recording (required on Android)
+  await setAudioModeAsync({
     allowsRecordingIOS: true,
     playsInSilentModeIOS: true,
   });
 
-  const { recording: rec } = await Audio.Recording.createAsync(
-    Audio.RecordingOptionsPresets.HIGH_QUALITY
-  );
-  recording = rec;
+  recorder = new AudioRecorder(RecordingPresets.HIGH_QUALITY);
+  await recorder.prepareToRecordAsync();
+  recorder.record();
 }
 
 /**
@@ -80,11 +85,12 @@ export async function startRecording(): Promise<void> {
 export async function stopRecordingAndSend(
   sessionId: string
 ): Promise<{ userMsg: ChatMessage; agentMsg: ChatMessage }> {
-  if (!recording) throw new Error('No active recording');
+  if (!recorder) throw new Error('No active recording');
 
-  await recording.stopAndUnloadAsync();
-  const uri = recording.getURI();
-  recording = null;
+  await recorder.stop();
+  const uri = recorder.uri;
+  recorder.release();
+  recorder = null;
 
   if (!uri) throw new Error('Recording URI is null');
 
@@ -101,6 +107,7 @@ export async function stopRecordingAndSend(
     content: transcript ?? '🎤 Voice message',
     transcript,
     isVoice: true,
+    audioUri: uri,
     timestamp: new Date().toISOString(),
   };
 

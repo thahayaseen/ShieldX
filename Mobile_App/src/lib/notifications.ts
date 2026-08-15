@@ -1,5 +1,48 @@
 import { Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 import { updateHeroFcmTokenInSupabase } from './supabase';
+
+// ─── Foreground notification handler ────────────────────────
+// Must be set ONCE at app startup (before any notification arrives).
+// This makes notifications show as banners even when the app is in foreground.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
+/**
+ * Create the Android notification channel used for mission alerts.
+ * Safe to call multiple times — Android ignores duplicate channel creation.
+ */
+export async function ensureNotificationChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  
+  // Clean up the old broken channel that was cached by Android with an invalid sound
+  try {
+    await Notifications.deleteNotificationChannelAsync('missions');
+  } catch (e) {
+    // ignore
+  }
+
+  // Create a fresh channel to bypass Android channel caching
+  await Notifications.setNotificationChannelAsync('aegis-missions', {
+    name: 'Mission Alerts',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#4fc3f7',
+    sound: null, // explicitly null so it uses the system default instead of looking for 'default.wav'
+    enableVibrate: true,
+    showBadge: true,
+  });
+}
+
+let cachedRegisteredToken: string | null = null;
 
 /**
  * Register FCM push token for the authenticated hero.
@@ -11,9 +54,8 @@ export async function registerHeroPushToken(heroId: string): Promise<string | nu
   try {
     let token: string | null = null;
 
-    // Check if running on web vs native
     if (Platform.OS === 'web') {
-      // In web browser context, construct a persistent web FCM token identifier
+      // Web: persist a stable identifier in localStorage
       if (typeof window !== 'undefined' && window.localStorage) {
         let storedToken = localStorage.getItem(`aegis_fcm_token_${heroId}`);
         if (!storedToken) {
@@ -23,37 +65,45 @@ export async function registerHeroPushToken(heroId: string): Promise<string | nu
         token = storedToken;
       }
     } else {
-      // On Android / iOS native build using Firebase / Expo Notifications
-      try {
-        const Notifications = require('expo-notifications');
-        const Device = require('expo-device');
+      // Native Android / iOS
+      await ensureNotificationChannel();
 
-        if (Device.isDevice) {
-          const { status: existingStatus } = await Notifications.getPermissionsAsync();
-          let finalStatus = existingStatus;
+      if (Device.isDevice) {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
 
-          if (existingStatus !== 'granted') {
-            const { status } = await Notifications.requestPermissionsAsync();
-            finalStatus = status;
-          }
-
-          if (finalStatus === 'granted') {
-            const tokenData = await Notifications.getDevicePushTokenAsync();
-            token = tokenData?.data || (await Notifications.getExpoPushTokenAsync()).data;
-          }
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
         }
-      } catch (nativeErr) {
-        console.warn('[AEGIS Notifications] Native push token fetch fallback:', nativeErr);
-      }
 
-      // Fallback token format for Expo dev client / emulator
-      if (!token) {
-        token = `fcm_device_token_${heroId.substring(0, 8)}`;
+        if (finalStatus === 'granted') {
+          try {
+            // Expo push token works on dev builds without extra FCM config
+            const tokenData = await Notifications.getExpoPushTokenAsync();
+            token = tokenData.data;
+          } catch {
+            // Fallback: device push token (FCM direct)
+            try {
+              const deviceToken = await Notifications.getDevicePushTokenAsync();
+              token = deviceToken.data;
+            } catch (e2) {
+              console.warn('[AEGIS Notifications] Could not get device push token:', e2);
+            }
+          }
+        } else {
+          console.warn('[AEGIS Notifications] Permission not granted, skipping token registration');
+          return null;
+        }
+      } else {
+        // Emulator / simulator — use placeholder
+        token = `fcm_emulator_${heroId.substring(0, 8)}`;
       }
     }
 
-    if (token) {
+    if (token && token !== cachedRegisteredToken) {
       await updateHeroFcmTokenInSupabase(heroId, token);
+      cachedRegisteredToken = token;
       console.log(`[AEGIS FCM] Token registered for Hero (${heroId}):`, token);
     }
 

@@ -110,13 +110,24 @@ export const incidentsApi = {
 
 // ─── AI Chat ─────────────────────────────────────────────────
 
+import { supabase } from './supabase';
+
 export const chatApi = {
   /**
    * Send a text message to the AI Agent backend.
    * The backend handles MCP tool calls internally — never exposed to frontend.
    */
   sendMessage: async (req: ChatRequest): Promise<ChatResponse> => {
-    const { data } = await apiClient.post<ChatResponse>('/api/chat', req);
+    // We can also route this through edge function if needed, but for now we'll
+    // assume both voice and text go to the same voice-agent edge function,
+    // or we'll update it to use the new edge function url.
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = session ? { Authorization: `Bearer ${session.access_token}` } : {};
+    
+    // For text, we can use the same edge function if it supports text, or fallback.
+    // Given the prompt, we'll route to the voice-agent endpoint for both or just voice.
+    const url = 'https://gxpnrryuzvgrdpgkltpx.supabase.co/functions/v1/voice-agent';
+    const { data } = await apiClient.post<ChatResponse>(url, req, { headers });
     return data;
   },
 
@@ -125,7 +136,11 @@ export const chatApi = {
    * Backend transcribes → runs AI agent → returns { reply, transcript }.
    */
   sendVoice: async (req: ChatVoiceRequest): Promise<ChatResponse> => {
-    const { data } = await apiClient.post<ChatResponse>('/api/chat/voice', req);
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = session ? { Authorization: `Bearer ${session.access_token}` } : {};
+    
+    const url = 'https://gxpnrryuzvgrdpgkltpx.supabase.co/functions/v1/voice-agent';
+    const { data } = await apiClient.post<ChatResponse>(url, req, { headers });
     return data;
   },
 };

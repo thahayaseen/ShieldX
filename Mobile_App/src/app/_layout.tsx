@@ -1,6 +1,7 @@
 import '../global.css';
 import { DarkTheme, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
@@ -14,6 +15,14 @@ SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
   const { isAuthenticated, isPendingApproval, isLoading } = useAuth();
+
+  // Hide the native splash as soon as auth state is resolved.
+  // AnimatedSplashOverlay handles the custom in-app splash for authenticated users.
+  useEffect(() => {
+    if (!isLoading && (!isAuthenticated || isPendingApproval)) {
+      SplashScreen.hideAsync();
+    }
+  }, [isLoading, isAuthenticated, isPendingApproval]);
 
   if (isLoading) {
     return (

@@ -6,11 +6,11 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Speech from 'expo-speech';
 import { AegisColors } from '@/constants/theme';
 import { ScanlineOverlay } from '@/components/ScanlineOverlay';
@@ -66,32 +66,22 @@ export default function ChatScreen() {
       const { userMsg, agentMsg } = await sendTextMessage(query, sessionId);
       setMessages((prev) => [...prev, userMsg, agentMsg]);
       speakReply(agentMsg.content);
-    } catch {
-      // Offline fallback mock response if backend isn't running yet
-      const fallbackUser: ChatMessage = {
+    } catch (err: any) {
+      console.warn('Text send failed:', err);
+      const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
         role: 'user',
         content: query,
         timestamp: new Date().toISOString(),
       };
-      let replyContent = "I'm currently running in standalone simulation mode. Telemetry indicates 3 active incidents in Calicut sector.";
-      if (query.toLowerCase().includes('thor')) {
-        replyContent = '**Thor Odinson** is currently **On Mission** responding to an energy anomaly at Beypore Port.';
-      } else if (query.toLowerCase().includes('hulk') || query.toLowerCase().includes('building')) {
-        replyContent = '**Hulk** is assigned to the **Building Collapse Emergency** in Calicut City Center.';
-      } else if (query.toLowerCase().includes('available') || query.toLowerCase().includes('heroes')) {
-        replyContent = 'Currently available heroes:\n- **Spider-Man** (Online)\n- **Iron Man** (Online)\n- **Captain America** (Standby)';
-      }
-
-      const fallbackAgent: ChatMessage = {
-        id: `agent-${Date.now()}`,
+      const errMsg: ChatMessage = {
+        id: `err-${Date.now()}`,
         role: 'agent',
-        content: replyContent,
+        content: `⚠️ **Connection Error:** Failed to reach A.E.G.I.S. Core. (${err.message || 'Unknown error'})`,
         timestamp: new Date().toISOString(),
       };
-
-      setMessages((prev) => [...prev, fallbackUser, fallbackAgent]);
-      speakReply(replyContent);
+      setMessages((prev) => [...prev, userMsg, errMsg]);
+      speakReply("Connection to AEGIS core failed.");
     } finally {
       setLoading(false);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
@@ -99,7 +89,18 @@ export default function ChatScreen() {
   };
 
   const handleStartRecord = async () => {
-    await startRecording();
+    try {
+      await startRecording();
+    } catch (err: any) {
+      // Surface permission errors as a chat message so the user sees them
+      const errMsg: ChatMessage = {
+        id: `err-${Date.now()}`,
+        role: 'agent',
+        content: `⚠️ **Mic Error:** ${err.message}`,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, errMsg]);
+    }
   };
 
   const handleStopRecord = async () => {
@@ -108,24 +109,16 @@ export default function ChatScreen() {
       const { userMsg, agentMsg } = await stopRecordingAndSend(sessionId);
       setMessages((prev) => [...prev, userMsg, agentMsg]);
       speakReply(agentMsg.content);
-    } catch (err) {
-      console.warn('Voice send failed, using simulated voice query', err);
-      const userVoice: ChatMessage = {
-        id: `voice-${Date.now()}`,
-        role: 'user',
-        content: '🎤 Voice Query: Status of ongoing emergencies?',
-        transcript: 'Status of ongoing emergencies?',
-        isVoice: true,
-        timestamp: new Date().toISOString(),
-      };
-      const agentVoice: ChatMessage = {
-        id: `agent-${Date.now()}`,
+    } catch (err: any) {
+      console.warn('Voice send failed:', err);
+      const errMsg: ChatMessage = {
+        id: `err-${Date.now()}`,
         role: 'agent',
-        content: '**Building Collapse** in Calicut City Center is Priority Critical. Hulk is en route.',
+        content: `⚠️ **Transmission Error:** Voice packet rejected by A.E.G.I.S. Core. (${err.message || 'Unknown error'})`,
         timestamp: new Date().toISOString(),
       };
-      setMessages((prev) => [...prev, userVoice, agentVoice]);
-      speakReply(agentVoice.content);
+      setMessages((prev) => [...prev, errMsg]);
+      speakReply("Voice transmission failed.");
     } finally {
       setLoading(false);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
@@ -133,7 +126,7 @@ export default function ChatScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScanlineOverlay />
 
       <View style={styles.header}>

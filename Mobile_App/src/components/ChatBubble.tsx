@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import Markdown from 'react-native-markdown-display';
 import { AegisColors } from '@/constants/theme';
 import type { ChatMessage } from '@/types';
@@ -7,6 +8,22 @@ import type { ChatMessage } from '@/types';
 interface ChatBubbleProps {
   message: ChatMessage;
 }
+
+const VoicePlayer: React.FC<{ uri: string }> = ({ uri }) => {
+  const player = useAudioPlayer(uri);
+  const status = useAudioPlayerStatus(player);
+
+  return (
+    <TouchableOpacity 
+      style={styles.playButton} 
+      onPress={() => status.playing ? player.pause() : player.play()}
+    >
+      <Text style={styles.playButtonText}>
+        {status.playing ? '⏸️ PAUSE' : '▶️ PLAY ORIGINAL AUDIO'}
+      </Text>
+    </TouchableOpacity>
+  );
+};
 
 export const ChatBubble: React.FC<ChatBubbleProps> = ({ message }) => {
   const isUser = message.role === 'user';
@@ -38,6 +55,8 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message }) => {
         {message.transcript && (
           <Text style={styles.transcriptSubtext}>Transcript: "{message.transcript}"</Text>
         )}
+
+        {message.audioUri && <VoicePlayer uri={message.audioUri} />}
 
         <Text style={styles.timestamp}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -120,6 +139,22 @@ const styles = StyleSheet.create({
     color: AegisColors.textMuted,
     marginTop: 4,
     alignSelf: 'flex-end',
+  },
+  playButton: {
+    marginTop: 8,
+    backgroundColor: 'rgba(79, 195, 247, 0.2)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(79, 195, 247, 0.4)',
+  },
+  playButtonText: {
+    color: AegisColors.accentBlue,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
 });
 

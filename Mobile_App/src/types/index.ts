@@ -101,6 +101,7 @@ export interface ChatMessage {
   content: string;
   transcript?: string;  // For voice messages — the transcribed text
   isVoice?: boolean;
+  audioUri?: string;    // Local URI to replay the recording
   timestamp: string;
 }
 
