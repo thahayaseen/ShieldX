@@ -72,7 +72,7 @@ serve(async (req) => {
     ];
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-pro",
+      model: "gemini-flash-latest",
       contents: requestContents,
       config: {
         tools: [{ functionDeclarations: geminiTools }],
@@ -96,13 +96,10 @@ serve(async (req) => {
 
       // Send tool result back to Gemini for the final response
       const followUpResponse = await ai.models.generateContent({
-        model: "gemini-1.5-pro",
+        model: "gemini-flash-latest",
         contents: [
           ...requestContents,
-          {
-            role: "model",
-            parts: [{ functionCall: call }],
-          },
+          response.candidates[0].content, // Pass the EXACT model response back (includes thought_signature)
           {
             role: "user",
             parts: [
