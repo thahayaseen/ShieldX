@@ -6,7 +6,7 @@ import express from 'express';
 import cors from 'cors';
 
 import { getHeroStatus } from './tools/heroes.js';
-import { getActiveMissions, getHeroAssignment, createMission } from './tools/missions.js';
+import { getActiveMissions, getHeroAssignment, createMission, assignMission } from './tools/missions.js';
 import { getBreakingIncidents } from './tools/incidents.js';
 import { getSystemOverview } from './tools/system.js';
 import { analyzeIncident } from './ai/gemini.js';
@@ -55,6 +55,18 @@ const TOOLS = {
         assigned_hero_id: { type: 'string', description: 'UUID of the hero to dispatch (optional)' }
       },
       required: ['title', 'description', 'priority']
+    }
+  },
+  assign_mission: {
+    name: 'assign_mission',
+    description: 'Assign a hero to an existing mission and dispatch them. Automatically sends a push notification.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mission_id: { type: 'string', description: 'The UUID of the mission' },
+        hero_id: { type: 'string', description: 'The UUID of the hero being assigned' }
+      },
+      required: ['mission_id', 'hero_id']
     }
   },
   get_breaking_incidents: {
@@ -150,6 +162,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           parsedArgs.priority,
           parsedArgs.assigned_hero_id
         );
+        break;
+      }
+
+      case 'assign_mission': {
+        const schema = z.object({
+          mission_id: z.string(),
+          hero_id: z.string()
+        });
+        const parsedArgs = schema.parse(args);
+        result = await assignMission(parsedArgs.mission_id, parsedArgs.hero_id);
         break;
       }
       
