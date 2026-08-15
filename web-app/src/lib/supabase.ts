@@ -1,6 +1,6 @@
 // A.E.G.I.S. – Supabase Client & Realtime Helpers (web-app)
 import { createClient } from '@supabase/supabase-js';
-import type { Hero, HeroStatus } from '../types';
+import type { Hero, HeroStatus, Mission, MissionStatus, Priority } from '../types';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
@@ -52,6 +52,48 @@ export function formatDbHero(dbHero: any): Hero {
   };
 }
 
+export function formatDbMission(dbMission: any): Mission {
+  const priorityMap: Record<string, Priority> = {
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    critical: 'critical',
+  };
+
+  const statusMap: Record<string, MissionStatus> = {
+    pending: 'pending',
+    dispatched: 'pending',
+    accepted: 'accepted',
+    en_route: 'en_route',
+    arrived: 'arrived',
+    in_progress: 'en_route',
+    completed: 'complete',
+    complete: 'complete',
+    failed: 'failed',
+  };
+
+  return {
+    id: dbMission.id,
+    title: dbMission.title || 'Untitled Emergency',
+    description: dbMission.description || '',
+    priority: priorityMap[dbMission.priority] || 'medium',
+    status: statusMap[dbMission.status] || 'pending',
+    location: dbMission.location
+      ? {
+          lat: dbMission.location.lat ?? 11.2588,
+          lng: dbMission.location.lng ?? 75.7804,
+          label: dbMission.location.city || dbMission.location.address || dbMission.location.label || 'Calicut Sector',
+        }
+      : { lat: 11.2588, lng: 75.7804, label: 'Calicut Sector' },
+    requiredPowers: Array.isArray(dbMission.required_powers) ? dbMission.required_powers : [],
+    assignedHeroId: dbMission.assigned_hero_id,
+    incidentId: dbMission.incident_id,
+    aiReasoning: dbMission.ai_reasoning,
+    createdAt: dbMission.created_at || new Date().toISOString(),
+    updatedAt: dbMission.updated_at || new Date().toISOString(),
+  };
+}
+
 /**
  * Fetch all heroes directly from live Supabase database
  */
@@ -71,6 +113,63 @@ export async function fetchHeroesFromSupabase(): Promise<Hero[]> {
   } catch (err) {
     console.error('[AEGIS Supabase] fetchHeroes error:', err);
     return [];
+  }
+}
+
+/**
+ * Fetch all missions directly from live Supabase database
+ */
+export async function fetchMissionsFromSupabase(): Promise<Mission[]> {
+  try {
+    const { data, error } = await supabase
+      .from('missions')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error || !data) {
+      console.warn('[AEGIS Supabase] Fetch missions error:', error);
+      return [];
+    }
+
+    return data.map(formatDbMission);
+  } catch (err) {
+    console.error('[AEGIS Supabase] fetchMissions error:', err);
+    return [];
+  }
+}
+
+/**
+ * Create & dispatch a new mission directly into Supabase database.
+ * Broadcasts via Supabase Realtime so the mobile hero app instantly vibrates & beeps!
+ */
+export async function createMissionInSupabase(mission: Partial<Mission>): Promise<Mission | null> {
+  try {
+    const insertObj: Record<string, any> = {
+      title: mission.title || 'NEW TACTICAL MISSION',
+      description: mission.description || '',
+      location: mission.location || { city: 'Calicut', lat: 11.2588, lng: 75.7804 },
+      priority: mission.priority || 'medium',
+      status: 'dispatched',
+      required_powers: mission.requiredPowers || [],
+      assigned_hero_id: mission.assignedHeroId,
+      ai_reasoning: mission.aiReasoning || 'Dispatched via A.E.G.I.S. Command Center',
+    };
+
+    const { data, error } = await supabase
+      .from('missions')
+      .insert(insertObj)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('[AEGIS Supabase] Create mission error:', error.message);
+      return null;
+    }
+
+    return formatDbMission(data);
+  } catch (err) {
+    console.error('[AEGIS Supabase] createMission error:', err);
+    return null;
   }
 }
 
@@ -153,6 +252,27 @@ export function subscribeToHeroesRealtime(onHeroesChanged: (payload: any) => voi
     .subscribe((status) => {
       console.log('[AEGIS Realtime WebSocket] Heroes subscription status:', status);
     });
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+/**
+ * Realtime WebSocket listener for live postgres_changes on table missions
+ */
+export function subscribeToMissionsRealtime(onMissionsChanged: (payload: any) => void) {
+  const channel = supabase
+    .channel('realtime:missions:dashboard')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'missions' },
+      (payload) => {
+        console.log('[AEGIS Realtime WebSocket] Received missions change:', payload);
+        onMissionsChanged(payload);
+      }
+    )
+    .subscribe();
 
   return () => {
     supabase.removeChannel(channel);

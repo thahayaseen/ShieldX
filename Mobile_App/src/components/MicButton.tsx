@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { AegisColors } from '@/constants/theme';
 
@@ -19,7 +19,9 @@ export const MicButton: React.FC<MicButtonProps> = ({
   const handlePressIn = async () => {
     if (disabled) return;
     try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
       setIsRecording(true);
       await onStartRecord();
     } catch (err) {
@@ -31,7 +33,9 @@ export const MicButton: React.FC<MicButtonProps> = ({
   const handlePressOut = async () => {
     if (!isRecording) return;
     try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      }
       setIsRecording(false);
       await onStopRecord();
     } catch (err) {
@@ -43,9 +47,14 @@ export const MicButton: React.FC<MicButtonProps> = ({
   return (
     <View style={styles.wrapper}>
       {isRecording && (
-        <View style={styles.recordingPulse}>
-          <Text style={styles.pulseText}>TRANSMITTING...</Text>
-        </View>
+        <>
+          {/* Audio Visualizer Pulse Rings */}
+          <View style={styles.pulseRingOuter} />
+          <View style={styles.pulseRingInner} />
+          <View style={styles.recordingPulse}>
+            <Text style={styles.pulseText}>🎙️ TRANSMITTING AUDIO TO A.E.G.I.S...</Text>
+          </View>
+        </>
       )}
 
       <TouchableOpacity
@@ -57,6 +66,11 @@ export const MicButton: React.FC<MicButtonProps> = ({
           styles.button,
           isRecording ? styles.buttonRecording : styles.buttonIdle,
           disabled && styles.buttonDisabled,
+          Platform.OS === 'web' && isRecording
+            ? ({ boxShadow: '0 0 20px rgba(255, 82, 82, 0.8), 0 0 40px rgba(255, 82, 82, 0.4)' } as any)
+            : Platform.OS === 'web'
+            ? ({ boxShadow: '0 0 12px rgba(79, 195, 247, 0.3)' } as any)
+            : {},
         ]}>
         <Text style={styles.icon}>{isRecording ? '🔴' : '🎙️'}</Text>
       </TouchableOpacity>
@@ -68,14 +82,36 @@ const styles = StyleSheet.create({
   wrapper: {
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  pulseRingOuter: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 82, 82, 0.4)',
+    backgroundColor: 'rgba(255, 82, 82, 0.1)',
+  },
+  pulseRingInner: {
+    position: 'absolute',
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 82, 82, 0.7)',
   },
   recordingPulse: {
     position: 'absolute',
-    bottom: 54,
-    backgroundColor: 'rgba(255, 82, 82, 0.9)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
+    bottom: 58,
+    backgroundColor: '#ff5252',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    shadowColor: '#ff5252',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
   },
   pulseText: {
     color: '#ffffff',
@@ -84,25 +120,26 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   button: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
+    zIndex: 2,
   },
   buttonIdle: {
     backgroundColor: '#161929',
     borderColor: AegisColors.accentBlue,
   },
   buttonRecording: {
-    backgroundColor: 'rgba(255, 82, 82, 0.3)',
-    borderColor: AegisColors.critical,
+    backgroundColor: 'rgba(255, 82, 82, 0.9)',
+    borderColor: '#ffffff',
   },
   buttonDisabled: {
     opacity: 0.4,
   },
   icon: {
-    fontSize: 18,
+    fontSize: 20,
   },
 });

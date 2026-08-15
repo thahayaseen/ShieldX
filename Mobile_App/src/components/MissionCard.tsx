@@ -20,20 +20,27 @@ export const MissionCard: React.FC<MissionCardProps> = ({
 
   return (
     <TouchableOpacity
-      activeOpacity={0.85}
+      activeOpacity={0.88}
       onPress={onPress}
       style={[
         styles.card,
-        { borderLeftColor: priorityColor },
-        Platform.OS === 'web' ? ({ boxShadow: '0 4px 12px rgba(0,0,0,0.3)' } as any) : {},
+        { borderLeftColor: priorityColor, borderColor: `${priorityColor}40` },
+        Platform.OS === 'web'
+          ? ({ boxShadow: `0 6px 20px ${priorityColor}20, 0 2px 8px rgba(0,0,0,0.6)` } as any)
+          : {},
       ]}>
+      {/* Top Corner Radar Marker */}
+      <View style={[styles.cornerMarker, { borderColor: priorityColor }]} />
+
       <View style={styles.headerRow}>
-        <View style={[styles.priorityBadge, { backgroundColor: `${priorityColor}20`, borderColor: `${priorityColor}60` }]}>
+        <View style={[styles.priorityBadge, { backgroundColor: `${priorityColor}18`, borderColor: `${priorityColor}80` }]}>
           <Text style={[styles.priorityText, { color: priorityColor }]}>
-            {mission.priority.toUpperCase()}
+            {mission.priority.toUpperCase()} PRIORITY
           </Text>
         </View>
-        <Text style={styles.statusText}>{mission.status.replace('_', ' ').toUpperCase()}</Text>
+        <Text style={[styles.statusText, { color: priorityColor }]}>
+          {mission.status.replace('_', ' ').toUpperCase()}
+        </Text>
       </View>
 
       <Text style={styles.title}>{mission.title}</Text>
@@ -64,32 +71,36 @@ export const MissionCard: React.FC<MissionCardProps> = ({
       {mission.status === 'pending' && onAccept && (
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: AegisColors.accentBlue }]}
-          onPress={onAccept}>
-          <Text style={styles.actionBtnText}>⚡ ACCEPT MISSION</Text>
+          onPress={onAccept}
+          activeOpacity={0.8}>
+          <Text style={styles.actionBtnText}>⚡ ACCEPT MISSION ASSIGNMENT</Text>
         </TouchableOpacity>
       )}
 
       {mission.status === 'accepted' && onStatusChange && (
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: AegisColors.accentAmber }]}
-          onPress={() => onStatusChange('en_route')}>
-          <Text style={[styles.actionBtnText, { color: '#0d0f1a' }]}>🚀 EN ROUTE</Text>
+          onPress={() => onStatusChange('en_route')}
+          activeOpacity={0.8}>
+          <Text style={[styles.actionBtnText, { color: '#0d0f1a' }]}>🚀 DEPLOY / EN ROUTE</Text>
         </TouchableOpacity>
       )}
 
       {mission.status === 'en_route' && onStatusChange && (
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: AegisColors.heroes.Thor }]}
-          onPress={() => onStatusChange('arrived')}>
-          <Text style={styles.actionBtnText}>📍 ARRIVED AT SCENE</Text>
+          onPress={() => onStatusChange('arrived')}
+          activeOpacity={0.8}>
+          <Text style={styles.actionBtnText}>📍 ARRIVED AT TACTICAL SCENE</Text>
         </TouchableOpacity>
       )}
 
       {mission.status === 'arrived' && onStatusChange && (
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: AegisColors.success }]}
-          onPress={() => onStatusChange('complete')}>
-          <Text style={[styles.actionBtnText, { color: '#0d0f1a' }]}>✅ COMPLETE MISSION</Text>
+          onPress={() => onStatusChange('complete')}
+          activeOpacity={0.8}>
+          <Text style={[styles.actionBtnText, { color: '#0d0f1a' }]}>✅ MARK MISSION COMPLETE</Text>
         </TouchableOpacity>
       )}
     </TouchableOpacity>
@@ -98,22 +109,23 @@ export const MissionCard: React.FC<MissionCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
+    position: 'relative',
     backgroundColor: AegisColors.surface,
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
-    borderLeftWidth: 4,
+    marginBottom: 14,
+    borderLeftWidth: 5,
     borderWidth: 1,
-    borderColor: AegisColors.border,
-    ...(Platform.OS !== 'web'
-      ? {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 6,
-          elevation: 3,
-        }
-      : {}),
+    overflow: 'hidden',
+  },
+  cornerMarker: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 10,
+    height: 10,
+    borderTopWidth: 2,
+    borderRightWidth: 2,
   },
   headerRow: {
     flexDirection: 'row',
@@ -123,29 +135,29 @@ const styles = StyleSheet.create({
   },
   priorityBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 4,
     borderWidth: 1,
   },
   priorityText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
     letterSpacing: 0.8,
   },
   statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: AegisColors.textSecondary,
-    letterSpacing: 0.5,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
   },
   title: {
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '900',
     color: AegisColors.textPrimary,
     marginBottom: 4,
+    letterSpacing: 0.3,
   },
   description: {
-    fontSize: 13,
+    fontSize: 12,
     color: AegisColors.textSecondary,
     lineHeight: 18,
     marginBottom: 10,
@@ -156,14 +168,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   locationText: {
-    fontSize: 12,
+    fontSize: 11,
     color: AegisColors.accentBlue,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   heroText: {
-    fontSize: 12,
+    fontSize: 11,
     color: AegisColors.accentAmber,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   powersRow: {
     flexDirection: 'row',
@@ -173,28 +185,33 @@ const styles = StyleSheet.create({
   },
   powerPill: {
     backgroundColor: 'rgba(79, 195, 247, 0.1)',
-    borderColor: 'rgba(79, 195, 247, 0.25)',
+    borderColor: 'rgba(79, 195, 247, 0.3)',
     borderWidth: 1,
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 4,
   },
   powerText: {
-    fontSize: 10,
+    fontSize: 9,
     color: AegisColors.accentBlue,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   actionBtn: {
-    paddingVertical: 10,
-    borderRadius: 6,
+    paddingVertical: 12,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
   },
   actionBtnText: {
     color: '#ffffff',
     fontWeight: '900',
-    fontSize: 12,
+    fontSize: 11,
     letterSpacing: 1,
   },
 });

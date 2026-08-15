@@ -12,98 +12,69 @@ import { AegisColors } from '@/constants/theme';
 import { ScanlineOverlay } from '@/components/ScanlineOverlay';
 import { MissionCard } from '@/components/MissionCard';
 import { missionsApi } from '@/lib/api';
-import { updateMissionStatusInSupabase } from '@/lib/supabase';
-import type { Mission, Priority } from '@/types';
+import { updateMissionStatusInSupabase, subscribeToTable } from '@/lib/supabase';
+import { triggerEmergencyDispatchAlert } from '@/lib/sound';
+import { useAuth } from '@/context/AuthContext';
+import { ALL_HEROES } from '@/constants/heroes';
+import type { Mission } from '@/types';
 
 const INITIAL_MISSIONS: Mission[] = [
   {
     id: 'm-101',
-    title: 'Building Collapse - Downtown',
-    description: 'Structural failure at Calicut Commercial Complex. Civilians trapped on floor 4.',
+    title: 'Building Collapse - Calicut Center',
+    description: 'Structural beam failure at Commercial Complex. Multiple civilians trapped in lower levels.',
     priority: 'critical',
     status: 'pending',
     location: { lat: 11.2588, lng: 75.7804, label: 'Calicut City Center' },
-    requiredPowers: ['Strength', 'Rescue', 'Durability'],
-    assignedHeroId: 'h-hulk-1',
-    assignedHero: {
-      id: 'h-hulk-1',
-      name: 'Bruce Banner',
-      codename: 'Hulk',
-      powers: ['Strength', 'Durability', 'Leaping'],
-      status: 'on_mission',
-      location: { lat: 11.2588, lng: 75.7804, label: 'Calicut City Center' },
-      brandColor: '#2e7d32',
-      createdAt: '',
-      updatedAt: '',
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'm-102',
-    title: 'Harbor Energy Anomaly',
-    description: 'High-voltage surge detected near deep-water terminal.',
-    priority: 'high',
-    status: 'en_route',
-    location: { lat: 11.2411, lng: 75.7725, label: 'Beypore Port' },
-    requiredPowers: ['Energy Absorption', 'Flight'],
-    assignedHeroId: 'h-thor-1',
-    assignedHero: {
-      id: 'h-thor-1',
-      name: 'Thor Odinson',
-      codename: 'Thor',
-      powers: ['Lightning', 'Flight', 'Super Strength'],
-      status: 'on_mission',
-      location: { lat: 11.2411, lng: 75.7725, label: 'Beypore Port' },
-      brandColor: '#1565c0',
-      createdAt: '',
-      updatedAt: '',
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'm-103',
-    title: 'Highway Chemical Spill',
-    description: 'Tanker collision on NH66 Bypass. Hazardous containment required.',
-    priority: 'medium',
-    status: 'accepted',
-    location: { lat: 11.2721, lng: 75.8112, label: 'NH66 Bypass' },
-    requiredPowers: ['Containment', 'Tech'],
-    assignedHeroId: 'h-ironman-1',
-    assignedHero: {
-      id: 'h-ironman-1',
-      name: 'Tony Stark',
-      codename: 'Iron Man',
-      powers: ['Flight', 'Repulsors', 'Genius Intellect', 'Armor'],
-      status: 'on_mission',
-      location: { lat: 11.2721, lng: 75.8112, label: 'NH66 Bypass' },
-      brandColor: '#ff8f00',
-      createdAt: '',
-      updatedAt: '',
-    },
+    requiredPowers: ['Super Strength', 'Rubble Rescue', 'Durability'],
+    assignedHeroId: '11111111-0000-0000-0000-000000000001',
+    assignedHero: ALL_HEROES[0],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
 ];
 
 export default function MissionsScreen() {
+  const { hero: authHero } = useAuth();
+  const activeHero = authHero || ALL_HEROES[0];
+
   const [missions, setMissions] = useState<Mission[]>(INITIAL_MISSIONS);
-  const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
+  const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'CRITICAL' | 'ACTIVE' | 'PENDING'>('ALL');
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchMissions = async () => {
     try {
       const data = await missionsApi.getAll();
-      if (data && data.length > 0) setMissions(data);
+      if (data && data.length > 0) {
+        setMissions(data);
+      }
     } catch {
-      // keep fallback
+      // fallback
     }
   };
 
   useEffect(() => {
     fetchMissions();
-  }, []);
+
+    // Supabase Realtime listener for new mission dispatches
+    const unsubRealtimeMissions = subscribeToTable('missions', '*', (payload) => {
+      if (payload.new) {
+        const raw: any = payload.new;
+        const isForThisHero =
+          raw.assigned_hero_id === activeHero.id ||
+          raw.assignedHeroId === activeHero.id;
+
+        if (isForThisHero) {
+          triggerEmergencyDispatchAlert();
+          fetchMissions();
+        }
+      }
+    });
+
+    return () => {
+      unsubRealtimeMissions.unsubscribe();
+    };
+  }, [activeHero.id]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -122,7 +93,16 @@ export default function MissionsScreen() {
     );
   };
 
-  const filteredMissions = missions.filter((m) => {
+  // Strictly list ONLY missions dispatched to THIS hero
+  const heroOnlyMissions = missions.filter((m) => {
+    if (!m) return false;
+    const matchesId = m.assignedHeroId === activeHero.id;
+    const matchesCodename =
+      m.assignedHero?.codename?.toLowerCase() === activeHero.codename?.toLowerCase();
+    return matchesId || matchesCodename;
+  });
+
+  const filteredMissions = heroOnlyMissions.filter((m) => {
     if (selectedFilter === 'ALL') return true;
     if (selectedFilter === 'CRITICAL') return m.priority === 'critical';
     if (selectedFilter === 'ACTIVE') return m.status === 'en_route' || m.status === 'accepted';
@@ -136,11 +116,13 @@ export default function MissionsScreen() {
 
       <View style={styles.header}>
         <Text style={styles.title}>TACTICAL MISSIONS</Text>
-        <Text style={styles.subtitle}>COMMAND & DISPATCH ROSTER</Text>
+        <Text style={styles.subtitle}>
+          DISPATCHED TO {activeHero.codename.toUpperCase()} // SECTOR ROSTER
+        </Text>
 
         {/* Priority Filter Bar */}
         <View style={styles.filterRow}>
-          {['ALL', 'CRITICAL', 'ACTIVE', 'PENDING'].map((f) => (
+          {(['ALL', 'CRITICAL', 'ACTIVE', 'PENDING'] as const).map((f) => (
             <TouchableOpacity
               key={f}
               style={[
@@ -150,8 +132,8 @@ export default function MissionsScreen() {
               onPress={() => setSelectedFilter(f)}>
               <Text
                 style={[
-                  styles.filterBtnText,
-                  selectedFilter === f && styles.filterBtnTextActive,
+                  styles.filterText,
+                  selectedFilter === f && styles.filterTextActive,
                 ]}>
                 {f}
               </Text>
@@ -163,18 +145,22 @@ export default function MissionsScreen() {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={AegisColors.accentBlue} />}>
-        {filteredMissions.length === 0 ? (
-          <View style={styles.emptyView}>
-            <Text style={styles.emptyText}>NO MISSIONS FOUND IN THIS FILTER</Text>
-          </View>
-        ) : (
+        {filteredMissions.length > 0 ? (
           filteredMissions.map((m) => (
             <MissionCard
               key={m.id}
               mission={m}
-              onStatusChange={(st) => handleStatusChange(m.id, st)}
+              onStatusChange={(status) => handleStatusChange(m.id, status)}
             />
           ))
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyIcon}>🛡️</Text>
+            <Text style={styles.emptyTitle}>NO DISPATCHED MISSIONS</Text>
+            <Text style={styles.emptySub}>
+              No emergency missions are currently dispatched to {activeHero.codename}. Standing by for Command Center signals.
+            </Text>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -187,22 +173,24 @@ const styles = StyleSheet.create({
     backgroundColor: AegisColors.bg,
   },
   header: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: AegisColors.border,
+    backgroundColor: AegisColors.surface,
   },
   title: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '900',
     color: AegisColors.textPrimary,
-    letterSpacing: 1.5,
+    letterSpacing: 2,
   },
   subtitle: {
     fontSize: 10,
+    fontWeight: '800',
     color: AegisColors.accentBlue,
-    fontWeight: '700',
-    letterSpacing: 0.8,
+    letterSpacing: 1,
     marginTop: 2,
     marginBottom: 12,
   },
@@ -214,34 +202,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
-    backgroundColor: AegisColors.surface,
     borderWidth: 1,
     borderColor: AegisColors.border,
+    backgroundColor: 'transparent',
   },
   filterBtnActive: {
-    backgroundColor: 'rgba(79, 195, 247, 0.15)',
     borderColor: AegisColors.accentBlue,
+    backgroundColor: 'rgba(79, 195, 247, 0.15)',
   },
-  filterBtnText: {
+  filterText: {
     fontSize: 10,
     fontWeight: '800',
-    color: AegisColors.textSecondary,
-    letterSpacing: 0.5,
+    color: AegisColors.textMuted,
+    letterSpacing: 0.8,
   },
-  filterBtnTextActive: {
+  filterTextActive: {
     color: AegisColors.accentBlue,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 30,
   },
-  emptyView: {
-    padding: 40,
+  emptyCard: {
+    backgroundColor: AegisColors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: AegisColors.border,
+    padding: 32,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
   },
-  emptyText: {
-    color: AegisColors.textMuted,
+  emptyIcon: {
+    fontSize: 36,
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    color: AegisColors.textPrimary,
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  emptySub: {
+    color: AegisColors.textSecondary,
     fontSize: 12,
-    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

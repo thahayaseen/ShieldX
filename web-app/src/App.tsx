@@ -12,7 +12,16 @@ import { LoginScreen } from './components/LoginScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { onSocketEvent } from './lib/socket';
 import { heroesApi, missionsApi, incidentsApi } from './lib/api';
-import { fetchHeroesFromSupabase, subscribeToHeroesRealtime, updateHeroInSupabase, formatDbHero } from './lib/supabase';
+import {
+  fetchHeroesFromSupabase,
+  fetchMissionsFromSupabase,
+  createMissionInSupabase,
+  subscribeToHeroesRealtime,
+  subscribeToMissionsRealtime,
+  updateHeroInSupabase,
+  formatDbHero,
+  formatDbMission,
+} from './lib/supabase';
 import type { Hero, Mission, Incident, HeroStatus, MissionStatus } from './types';
 
 const INITIAL_HEROES: Hero[] = [
@@ -112,15 +121,23 @@ function CommandDashboard() {
     }
   };
 
+  const reloadMissionsFromSupabase = async () => {
+    const liveMissions = await fetchMissionsFromSupabase();
+    if (liveMissions && liveMissions.length > 0) {
+      setMissions(liveMissions);
+    }
+  };
+
   const fetchLiveState = async () => {
     try {
-      await reloadHeroesFromSupabase();
+      await Promise.allSettled([
+        reloadHeroesFromSupabase(),
+        reloadMissionsFromSupabase(),
+      ]);
 
-      const [m, inc] = await Promise.allSettled([
-        missionsApi.getAll(),
+      const [inc] = await Promise.allSettled([
         incidentsApi.getAll(),
       ]);
-      if (m.status === 'fulfilled' && m.value?.length) setMissions(m.value);
       if (inc.status === 'fulfilled' && inc.value?.length) setIncidents(inc.value);
     } catch {
       // fallback to initial state
@@ -132,7 +149,6 @@ function CommandDashboard() {
 
     // Subscribe to realtime Supabase hero updates (new signups / approvals / status toggles)
     const unsubRealtimeHeroes = subscribeToHeroesRealtime((payload) => {
-      console.log('[AEGIS Dashboard] Received Realtime payload:', payload);
       if (payload?.new && payload?.new?.id) {
         const updatedHero = formatDbHero(payload.new);
         setHeroes((prev) => {
@@ -143,8 +159,19 @@ function CommandDashboard() {
           return [updatedHero, ...prev];
         });
       }
-      // Also trigger a background fetch to ensure 100% sync
       reloadHeroesFromSupabase();
+    });
+
+    // Subscribe to realtime Supabase mission updates (new dispatches)
+    const unsubRealtimeMissions = subscribeToMissionsRealtime((payload) => {
+      if (payload?.new && payload?.new?.id) {
+        const updatedMission = formatDbMission(payload.new);
+        setMissions((prev) => [
+          updatedMission,
+          ...prev.filter((m) => m.id !== updatedMission.id),
+        ]);
+      }
+      reloadMissionsFromSupabase();
     });
 
     const unsubMission = onSocketEvent('mission:assigned', ({ mission }) => {
@@ -169,6 +196,7 @@ function CommandDashboard() {
 
     return () => {
       unsubRealtimeHeroes();
+      unsubRealtimeMissions();
       unsubMission();
       unsubMissionStatus();
       unsubHero();
@@ -225,10 +253,26 @@ function CommandDashboard() {
   };
 
   const handleDispatchMission = async (newMission: Mission) => {
+    // 1. Optimistic UI update on Command Center dashboard
     setMissions((prev) => [newMission, ...prev]);
     setIncidents((prev) =>
       prev.map((i) => (i.id === newMission.incidentId ? { ...i, status: 'dispatched' } : i))
     );
+
+    // 2. Persist to Supabase DB -> broadcasts Realtime WebSocket to Mobile Hero Wristband!
+    const created = await createMissionInSupabase({
+      title: newMission.title,
+      description: newMission.description,
+      priority: newMission.priority,
+      location: newMission.location,
+      requiredPowers: newMission.requiredPowers,
+      assignedHeroId: newMission.assignedHeroId || newMission.assignedHero?.id,
+      aiReasoning: newMission.aiReasoning,
+    });
+
+    if (created) {
+      setMissions((prev) => [created, ...prev.filter((m) => m.id !== newMission.id)]);
+    }
   };
 
   const criticalAlerts = incidents.filter((i) => i.severity === 'critical').length;
