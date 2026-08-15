@@ -36,7 +36,6 @@ export async function ensureNotificationChannel(): Promise<void> {
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
     lightColor: '#4fc3f7',
-    sound: null, // explicitly null so it uses the system default instead of looking for 'default.wav'
     enableVibrate: true,
     showBadge: true,
   });

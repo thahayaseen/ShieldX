@@ -67,10 +67,10 @@ export async function startRecording(): Promise<void> {
     );
   }
 
-  // Set audio mode for recording (required on Android)
+  // Set audio mode for recording (required on Android and iOS)
   await setAudioModeAsync({
-    allowsRecordingIOS: true,
-    playsInSilentModeIOS: true,
+    allowsRecording: true,
+    playsInSilentMode: true,
   });
 
   recorder = new AudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -99,7 +99,12 @@ export async function stopRecordingAndSend(
     encoding: FileSystem.EncodingType.Base64,
   });
 
-  const { reply, transcript } = await chatApi.sendVoice({ audio: base64, sessionId });
+  // expo-audio HIGH_QUALITY preset produces an m4a file on iOS/Android
+  const { reply, transcript } = await chatApi.sendVoice({ 
+    audio: base64, 
+    mimeType: 'audio/m4a',
+    sessionId 
+  });
 
   const userMsg: ChatMessage = {
     id: uid(),
