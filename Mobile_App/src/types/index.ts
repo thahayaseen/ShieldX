@@ -10,6 +10,7 @@ export type HeroStatus = 'online' | 'busy' | 'on_mission' | 'offline';
 
 export type MissionStatus =
   | 'pending'
+  | 'dispatched'
   | 'accepted'
   | 'en_route'
   | 'arrived'

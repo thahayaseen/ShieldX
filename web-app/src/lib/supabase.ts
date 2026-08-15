@@ -138,9 +138,45 @@ export async function fetchMissionsFromSupabase(): Promise<Mission[]> {
   }
 }
 
+export async function sendFcmPushNotification(fcmToken: string, title: string, body: string) {
+  const fcmServerKey = import.meta.env.VITE_FCM_SERVER_KEY || 'AIzaSyAj_mN-m1kXEfBDN0kgxMkfitkKrVd4cbY';
+  try {
+    const response = await fetch('https://fcm.googleapis.com/fcm/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `key=${fcmServerKey}`,
+      },
+      body: JSON.stringify({
+        to: fcmToken,
+        notification: {
+          title,
+          body,
+          sound: 'default',
+          priority: 'high',
+        },
+        data: {
+          type: 'MISSION_DISPATCH',
+          title,
+          body,
+        },
+      }),
+    });
+
+    if (response.ok) {
+      console.log(`[AEGIS FCM] Push notification dispatched to token: ${fcmToken}`);
+    } else {
+      console.warn('[AEGIS FCM] Push notification API response:', await response.text());
+    }
+  } catch (err) {
+    console.error('[AEGIS FCM] Error sending FCM push notification:', err);
+  }
+}
+
 /**
  * Create & dispatch a new mission directly into Supabase database.
- * Broadcasts via Supabase Realtime so the mobile hero app instantly vibrates & beeps!
+ * Broadcasts via Supabase Realtime so the mobile hero app instantly vibrates & beeps,
+ * and sends an FCM push notification using the configured Firebase FCM key.
  */
 export async function createMissionInSupabase(mission: Partial<Mission>): Promise<Mission | null> {
   try {
@@ -166,10 +202,64 @@ export async function createMissionInSupabase(mission: Partial<Mission>): Promis
       return null;
     }
 
+    // Fetch assigned hero FCM token and send push notification
+    if (mission.assignedHeroId) {
+      const { data: heroData } = await supabase
+        .from('heroes')
+        .select('name, codename, fcm_token')
+        .eq('id', mission.assignedHeroId)
+        .single();
+
+      if (heroData?.fcm_token) {
+        await sendFcmPushNotification(
+          heroData.fcm_token,
+          `🚨 EMERGENCY DISPATCH: ${mission.title?.toUpperCase()}`,
+          `Hero ${heroData.codename}, you have been dispatched to an active mission. Respond immediately!`
+        );
+      }
+    }
+
     return formatDbMission(data);
   } catch (err) {
     console.error('[AEGIS Supabase] createMission error:', err);
     return null;
+  }
+}
+
+/**
+ * Update Mission Status directly in Supabase database.
+ * Broadcasts via Realtime to mobile app and command center.
+ */
+export async function updateMissionStatusInSupabase(
+  missionId: string,
+  status: MissionStatus
+): Promise<boolean> {
+  try {
+    const dbStatusMap: Record<string, string> = {
+      pending: 'pending',
+      dispatched: 'dispatched',
+      accepted: 'accepted',
+      en_route: 'en_route',
+      arrived: 'arrived',
+      complete: 'completed',
+      failed: 'failed',
+    };
+
+    const dbStatus = dbStatusMap[status] || status;
+
+    const { error } = await supabase
+      .from('missions')
+      .update({ status: dbStatus, updated_at: new Date().toISOString() })
+      .eq('id', missionId);
+
+    if (error) {
+      console.error('[AEGIS Supabase] Failed to update mission status:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[AEGIS Supabase] updateMissionStatus error:', err);
+    return false;
   }
 }
 

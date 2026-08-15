@@ -60,8 +60,14 @@ export const AiDispatch: React.FC<AiDispatchProps> = ({
     }, 1200);
   };
 
+  const [dispatchedIncidentIds, setDispatchedIncidentIds] = useState<Set<string>>(new Set());
+
+  const isCurrentIncidentDispatched =
+    Boolean(selectedIncident) &&
+    (dispatchedIncidentIds.has(selectedIncident!.id) || selectedIncident?.status === 'dispatched');
+
   const handleConfirmDispatch = () => {
-    if (!selectedIncident || !dispatchResult) return;
+    if (!selectedIncident || !dispatchResult || isCurrentIncidentDispatched) return;
 
     const newMission: Mission = {
       id: `m-${Date.now()}`,
@@ -79,7 +85,7 @@ export const AiDispatch: React.FC<AiDispatchProps> = ({
     };
 
     onDispatchMission(newMission);
-    alert(`MISSION TRANSMITTED TO ${dispatchResult.recommendedHero.codename.toUpperCase()}'S WRISTBAND!`);
+    setDispatchedIncidentIds((prev) => new Set(prev).add(selectedIncident.id));
   };
 
   return (
@@ -168,12 +174,32 @@ export const AiDispatch: React.FC<AiDispatchProps> = ({
                 </div>
               </div>
 
-              <button
-                className="hud-btn hud-btn-critical"
-                style={{ width: '100%', padding: '14px', marginTop: '16px', fontSize: '13px' }}
-                onClick={handleConfirmDispatch}>
-                ⚡ DISPATCH TO {dispatchResult.recommendedHero.codename.toUpperCase()} (TRANSMIT TO ESP32)
-              </button>
+              {isCurrentIncidentDispatched ? (
+                <div
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    marginTop: '16px',
+                    borderRadius: '6px',
+                    backgroundColor: 'rgba(0, 230, 118, 0.15)',
+                    border: '1px solid #00e676',
+                    color: '#00e676',
+                    textAlign: 'center',
+                    fontWeight: 900,
+                    fontSize: '12px',
+                    letterSpacing: '0.8px',
+                    boxShadow: '0 0 15px rgba(0, 230, 118, 0.2)',
+                  }}>
+                  ✓ DISPATCH TRANSMITTED TO {dispatchResult.recommendedHero.codename.toUpperCase()} — EN ROUTE IN ROSTER
+                </div>
+              ) : (
+                <button
+                  className="hud-btn hud-btn-critical"
+                  style={{ width: '100%', padding: '14px', marginTop: '16px', fontSize: '13px' }}
+                  onClick={handleConfirmDispatch}>
+                  ⚡ DISPATCH TO {dispatchResult.recommendedHero.codename.toUpperCase()} (TRANSMIT TO ESP32)
+                </button>
+              )}
             </div>
           ) : (
             <div style={styles.standbyView}>

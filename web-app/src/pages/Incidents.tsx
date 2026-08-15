@@ -135,7 +135,16 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, onReportInciden
 
             <div style={styles.incFooter}>
               <span style={styles.locText}>📍 {inc.location.label}</span>
-              <span className="badge badge-cyan">{inc.status.toUpperCase()}</span>
+              <span
+                className={`badge ${
+                  inc.status === 'dispatched'
+                    ? 'badge-online'
+                    : inc.status === 'resolved'
+                    ? 'badge-cyan'
+                    : 'badge-high'
+                }`}>
+                {inc.status.toUpperCase()}
+              </span>
             </div>
           </div>
         ))}

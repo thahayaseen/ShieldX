@@ -68,10 +68,10 @@ export const MissionCard: React.FC<MissionCardProps> = ({
       )}
 
       {/* Quick Action buttons */}
-      {mission.status === 'pending' && onAccept && (
+      {(mission.status === 'pending' || mission.status === 'dispatched') && (onAccept || onStatusChange) && (
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: AegisColors.accentBlue }]}
-          onPress={onAccept}
+          onPress={() => (onAccept ? onAccept() : onStatusChange?.('accepted'))}
           activeOpacity={0.8}>
           <Text style={styles.actionBtnText}>⚡ ACCEPT MISSION ASSIGNMENT</Text>
         </TouchableOpacity>

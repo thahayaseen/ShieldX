@@ -11,11 +11,12 @@ import { AIChat } from './pages/AIChat';
 import { LoginScreen } from './components/LoginScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { onSocketEvent } from './lib/socket';
-import { heroesApi, missionsApi, incidentsApi } from './lib/api';
+import { heroesApi, incidentsApi } from './lib/api';
 import {
   fetchHeroesFromSupabase,
   fetchMissionsFromSupabase,
   createMissionInSupabase,
+  updateMissionStatusInSupabase,
   subscribeToHeroesRealtime,
   subscribeToMissionsRealtime,
   updateHeroInSupabase,
@@ -71,48 +72,11 @@ const INITIAL_HEROES: Hero[] = [
   },
 ];
 
-const INITIAL_INCIDENTS: Incident[] = [
-  {
-    id: 'inc-01',
-    title: 'Commercial Complex Structural Failure',
-    description: 'Catastrophic beam collapse at Calicut Commercial Complex. Multiple civilians trapped in lower levels.',
-    severity: 'critical',
-    location: { lat: 11.2588, lng: 75.7804, label: 'Calicut City Center' },
-    status: 'reported',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'inc-02',
-    title: 'High-Voltage Harbor Anomaly',
-    description: 'Surge of unexplained electrical discharge near deep-water terminal.',
-    severity: 'high',
-    location: { lat: 11.2411, lng: 75.7725, label: 'Beypore Port' },
-    status: 'dispatched',
-    createdAt: new Date().toISOString(),
-  },
-];
-
-const INITIAL_MISSIONS: Mission[] = [
-  {
-    id: 'm-101',
-    title: 'BUILDING COLLAPSE RESCUE',
-    description: 'Provide immediate structural stabilization and extract civilians from Sector 1.',
-    priority: 'critical',
-    status: 'pending',
-    location: { lat: 11.2588, lng: 75.7804, label: 'Calicut City Center' },
-    requiredPowers: ['Strength', 'Rescue', 'Durability'],
-    assignedHeroId: '44444444-0000-0000-0000-000000000004',
-    assignedHero: INITIAL_HEROES[3],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-
 function CommandDashboard() {
   const [activePage, setActivePage] = useState<PageId>('overview');
   const [heroes, setHeroes] = useState<Hero[]>(INITIAL_HEROES);
-  const [missions, setMissions] = useState<Mission[]>(INITIAL_MISSIONS);
-  const [incidents, setIncidents] = useState<Incident[]>(INITIAL_INCIDENTS);
+  const [missions, setMissions] = useState<Mission[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
 
   const reloadHeroesFromSupabase = async () => {
     const liveHeroes = await fetchHeroesFromSupabase();
@@ -159,7 +123,6 @@ function CommandDashboard() {
           return [updatedHero, ...prev];
         });
       }
-      reloadHeroesFromSupabase();
     });
 
     // Subscribe to realtime Supabase mission updates (new dispatches)
@@ -171,7 +134,6 @@ function CommandDashboard() {
           ...prev.filter((m) => m.id !== updatedMission.id),
         ]);
       }
-      reloadMissionsFromSupabase();
     });
 
     const unsubMission = onSocketEvent('mission:assigned', ({ mission }) => {
@@ -227,11 +189,7 @@ function CommandDashboard() {
     setMissions((prev) =>
       prev.map((m) => (m.id === missionId ? { ...m, status } : m))
     );
-    try {
-      await missionsApi.updateStatus(missionId, status);
-    } catch {
-      // ignore
-    }
+    await updateMissionStatusInSupabase(missionId, status);
   };
 
   const handleReportIncident = async (inc: Partial<Incident>) => {

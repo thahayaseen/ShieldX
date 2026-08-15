@@ -19,61 +19,25 @@ import { IncidentBanner } from '@/components/IncidentBanner';
 import { MicButton } from '@/components/MicButton';
 import { onSocketEvent } from '@/lib/socket';
 import { heroesApi, missionsApi } from '@/lib/api';
-import { updateHeroStatusInSupabase, updateMissionStatusInSupabase, subscribeToTable } from '@/lib/supabase';
+import {
+  updateHeroStatusInSupabase,
+  updateMissionStatusInSupabase,
+  fetchMissionsFromSupabase,
+  formatSupabaseMission,
+  subscribeToTable,
+} from '@/lib/supabase';
 import { triggerEmergencyDispatchAlert } from '@/lib/sound';
 import { useAuth } from '@/context/AuthContext';
 import type { Hero, Mission, HeroStatus } from '@/types';
 
 import { ALL_HEROES } from '@/constants/heroes';
 
-const INITIAL_MISSIONS: Mission[] = [
-  {
-    id: 'm-101',
-    title: 'Building Collapse - Calicut Center',
-    description: 'Structural beam failure at Commercial Complex. Multiple civilians trapped in lower levels.',
-    priority: 'critical',
-    status: 'pending',
-    location: { lat: 11.2588, lng: 75.7804, label: 'Calicut City Center' },
-    requiredPowers: ['Super Strength', 'Rubble Rescue', 'Durability'],
-    assignedHeroId: 'h-hulk-1',
-    assignedHero: ALL_HEROES[1],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'm-102',
-    title: 'Harbor High-Voltage Surge',
-    description: 'Explosive electrical discharge detected at deep-water shipping dock.',
-    priority: 'high',
-    status: 'en_route',
-    location: { lat: 11.2411, lng: 75.7725, label: 'Beypore Port' },
-    requiredPowers: ['Lightning Absorption', 'Flight'],
-    assignedHeroId: 'h-thor-1',
-    assignedHero: ALL_HEROES[2],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'm-103',
-    title: 'Chemical Tanker Collision',
-    description: 'Volatile containment leak on NH66 Bypass. Perimeter isolation in progress.',
-    priority: 'medium',
-    status: 'accepted',
-    location: { lat: 11.2721, lng: 75.8112, label: 'NH66 Bypass' },
-    requiredPowers: ['Armor Diagnostics', 'Flight'],
-    assignedHeroId: 'h-ironman-1',
-    assignedHero: ALL_HEROES[3],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-
 export default function HeroDashboard() {
   const { hero: authHero, userEmail, userName, userAvatar, clearanceLevel, logout } = useAuth();
   const activeHero = authHero || ALL_HEROES[0];
 
   const [heroModalVisible, setHeroModalVisible] = useState(false);
-  const [activeMissions, setActiveMissions] = useState<Mission[]>(INITIAL_MISSIONS);
+  const [activeMissions, setActiveMissions] = useState<Mission[]>([]);
   const [incomingMission, setIncomingMission] = useState<Mission | null>(null);
   const [alertVisible, setAlertVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -82,7 +46,7 @@ export default function HeroDashboard() {
 
   const fetchLiveState = async () => {
     try {
-      const liveMissions = await missionsApi.getAll();
+      const liveMissions = await fetchMissionsFromSupabase();
       if (liveMissions && liveMissions.length > 0) {
         setActiveMissions(liveMissions);
       }
@@ -116,14 +80,21 @@ export default function HeroDashboard() {
     const unsubRealtimeMissions = subscribeToTable('missions', '*', (payload) => {
       if (payload.new) {
         const raw: any = payload.new;
+        const newMission = formatSupabaseMission(raw);
         const isForThisHero =
           raw.assigned_hero_id === activeHero.id ||
           raw.assignedHeroId === activeHero.id;
 
         if (isForThisHero) {
           triggerEmergencyDispatchAlert();
-          fetchLiveState();
+          setIncomingMission(newMission);
+          setAlertVisible(true);
         }
+
+        setActiveMissions((prev) => [
+          newMission,
+          ...prev.filter((m) => m.id !== newMission.id),
+        ]);
       }
     });
 
@@ -372,12 +343,19 @@ export default function HeroDashboard() {
         <TouchableOpacity
           style={styles.simulateAlertBtn}
           onPress={() => {
-            const emergencyMission =
-              activeHero.codename === 'Hulk'
-                ? INITIAL_MISSIONS[0]
-                : activeHero.codename === 'Thor'
-                ? INITIAL_MISSIONS[1]
-                : INITIAL_MISSIONS[2];
+            const emergencyMission: Mission = {
+              id: `m-test-${Date.now()}`,
+              title: `EMERGENCY DISPATCH: ${activeHero.location?.label || 'Calicut Sector'} Hazard`,
+              description: `Immediate tactical response required for ${activeHero.codename}. Structural and civilian evacuation protocol active.`,
+              priority: 'critical',
+              status: 'dispatched',
+              location: activeHero.location || { lat: 11.2588, lng: 75.7804, label: 'Calicut Sector' },
+              requiredPowers: activeHero.powers || ['Tactical Support'],
+              assignedHeroId: activeHero.id,
+              assignedHero: activeHero,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
             setIncomingMission(emergencyMission);
             setAlertVisible(true);
           }}>

@@ -25,7 +25,13 @@ export const Missions: React.FC<MissionsProps> = ({ missions, onUpdateStatus }) 
 
       <div style={styles.kanbanGrid}>
         {columns.map((col) => {
-          const colMissions = missions.filter((m) => m.status === col.id);
+          const colMissions = missions.filter((m) => {
+            if (col.id === 'pending') return m.status === 'pending' || m.status === 'dispatched';
+            if (col.id === 'accepted') return m.status === 'accepted';
+            if (col.id === 'en_route') return m.status === 'en_route' || m.status === 'arrived';
+            if (col.id === 'complete') return m.status === 'complete' || (m.status as any) === 'completed';
+            return m.status === col.id;
+          });
           return (
             <div key={col.id} className="hud-panel" style={styles.kanbanCol}>
               <div style={{ ...styles.colHeader, borderBottomColor: col.color }}>

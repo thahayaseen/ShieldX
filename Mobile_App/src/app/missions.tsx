@@ -12,39 +12,28 @@ import { AegisColors } from '@/constants/theme';
 import { ScanlineOverlay } from '@/components/ScanlineOverlay';
 import { MissionCard } from '@/components/MissionCard';
 import { missionsApi } from '@/lib/api';
-import { updateMissionStatusInSupabase, subscribeToTable } from '@/lib/supabase';
+import {
+  updateMissionStatusInSupabase,
+  fetchMissionsFromSupabase,
+  formatSupabaseMission,
+  subscribeToTable,
+} from '@/lib/supabase';
 import { triggerEmergencyDispatchAlert } from '@/lib/sound';
 import { useAuth } from '@/context/AuthContext';
 import { ALL_HEROES } from '@/constants/heroes';
 import type { Mission } from '@/types';
 
-const INITIAL_MISSIONS: Mission[] = [
-  {
-    id: 'm-101',
-    title: 'Building Collapse - Calicut Center',
-    description: 'Structural beam failure at Commercial Complex. Multiple civilians trapped in lower levels.',
-    priority: 'critical',
-    status: 'pending',
-    location: { lat: 11.2588, lng: 75.7804, label: 'Calicut City Center' },
-    requiredPowers: ['Super Strength', 'Rubble Rescue', 'Durability'],
-    assignedHeroId: '11111111-0000-0000-0000-000000000001',
-    assignedHero: ALL_HEROES[0],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-
 export default function MissionsScreen() {
   const { hero: authHero } = useAuth();
   const activeHero = authHero || ALL_HEROES[0];
 
-  const [missions, setMissions] = useState<Mission[]>(INITIAL_MISSIONS);
+  const [missions, setMissions] = useState<Mission[]>([]);
   const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'CRITICAL' | 'ACTIVE' | 'PENDING'>('ALL');
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchMissions = async () => {
     try {
-      const data = await missionsApi.getAll();
+      const data = await fetchMissionsFromSupabase();
       if (data && data.length > 0) {
         setMissions(data);
       }
@@ -60,14 +49,19 @@ export default function MissionsScreen() {
     const unsubRealtimeMissions = subscribeToTable('missions', '*', (payload) => {
       if (payload.new) {
         const raw: any = payload.new;
+        const newMission = formatSupabaseMission(raw);
         const isForThisHero =
           raw.assigned_hero_id === activeHero.id ||
           raw.assignedHeroId === activeHero.id;
 
         if (isForThisHero) {
           triggerEmergencyDispatchAlert();
-          fetchMissions();
         }
+
+        setMissions((prev) => [
+          newMission,
+          ...prev.filter((m) => m.id !== newMission.id),
+        ]);
       }
     });
 

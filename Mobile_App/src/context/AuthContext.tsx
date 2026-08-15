@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { signInWithGoogle, signOutHero, getHeroFromSupabase } from '@/lib/auth';
+import { registerHeroPushToken } from '@/lib/notifications';
 import type { Hero } from '@/types';
 
 export interface MobileAuthError {
@@ -73,6 +74,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsAuthenticated(true);
         setIsPendingApproval(pending);
         setClearanceLevel(pending ? 'PENDING ADMIN VERIFICATION' : 'ALPHA-GUARDIAN // VERIFIED');
+        // Register FCM token for push notifications
+        registerHeroPushToken(mappedHero.id);
       } else {
         setHero(null);
         setIsAuthenticated(true);

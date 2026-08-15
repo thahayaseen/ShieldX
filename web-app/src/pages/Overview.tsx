@@ -69,32 +69,62 @@ export const Overview: React.FC<OverviewProps> = ({
           </div>
 
           <div style={styles.list}>
-            {incidents.map((inc) => (
-              <div key={inc.id} style={styles.incidentRow}>
-                <div style={styles.incidentInfo}>
-                  <div style={styles.incidentTitleRow}>
-                    <span
-                      className={`badge ${
-                        inc.severity === 'critical'
-                          ? 'badge-critical'
-                          : inc.severity === 'high'
-                          ? 'badge-high'
-                          : 'badge-cyan'
-                      }`}>
-                      {inc.severity}
-                    </span>
-                    <span style={styles.incidentTitle}>{inc.title}</span>
+            {incidents.map((inc) => {
+              const isDispatched = inc.status === 'dispatched';
+              return (
+                <div
+                  key={inc.id}
+                  style={{
+                    ...styles.incidentRow,
+                    ...(isDispatched
+                      ? {
+                          borderColor: 'rgba(0, 230, 118, 0.4)',
+                          backgroundColor: 'rgba(0, 230, 118, 0.06)',
+                        }
+                      : {}),
+                  }}>
+                  <div style={styles.incidentInfo}>
+                    <div style={styles.incidentTitleRow}>
+                      <span
+                        className={`badge ${
+                          isDispatched
+                            ? 'badge-online'
+                            : inc.severity === 'critical'
+                            ? 'badge-critical'
+                            : inc.severity === 'high'
+                            ? 'badge-high'
+                            : 'badge-cyan'
+                        }`}>
+                        {isDispatched ? 'DISPATCHED' : inc.severity}
+                      </span>
+                      <span style={styles.incidentTitle}>{inc.title}</span>
+                    </div>
+                    <p style={styles.incidentDesc}>{inc.description}</p>
+                    <span style={styles.incidentLoc}>📍 {inc.location?.label || 'Sector Unspecified'}</span>
                   </div>
-                  <p style={styles.incidentDesc}>{inc.description}</p>
-                  <span style={styles.incidentLoc}>📍 {inc.location?.label || 'Sector Unspecified'}</span>
+
+                  {isDispatched ? (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 900,
+                        color: '#00e676',
+                        padding: '6px 12px',
+                        border: '1px solid #00e676',
+                        borderRadius: '6px',
+                        backgroundColor: 'rgba(0, 230, 118, 0.1)',
+                        letterSpacing: '0.8px',
+                      }}>
+                      ✓ DISPATCHED
+                    </span>
+                  ) : (
+                    <button className="hud-btn" onClick={() => onNavigateToDispatch(inc.id)}>
+                      DISPATCH ⚡
+                    </button>
+                  )}
                 </div>
-                <button
-                  className="hud-btn"
-                  onClick={() => onNavigateToDispatch(inc.id)}>
-                  DISPATCH ⚡
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "21544665953",
+    "project_id": "tinker-10aaf",
+    "storage_bucket": "tinker-10aaf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:21544665953:android:0aadf8778942729c947b20",
+        "android_client_info": {
+          "package_name": "com.shieldx.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAj_mN-m1kXEfBDN0kgxMkfitkKrVd4cbY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
