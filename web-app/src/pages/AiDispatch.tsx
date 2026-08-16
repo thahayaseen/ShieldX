@@ -197,7 +197,7 @@ export const AiDispatch: React.FC<AiDispatchProps> = ({
                   className="hud-btn hud-btn-critical"
                   style={{ width: '100%', padding: '14px', marginTop: '16px', fontSize: '13px' }}
                   onClick={handleConfirmDispatch}>
-                  ⚡ DISPATCH TO {dispatchResult.recommendedHero.codename.toUpperCase()} (TRANSMIT TO ESP32)
+                  ⚡ DISPATCH TO {dispatchResult.recommendedHero.codename.toUpperCase()} (TRANSMIT TO HERO DEVICE)
                 </button>
               )}
             </div>

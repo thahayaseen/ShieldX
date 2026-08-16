@@ -87,6 +87,7 @@ export function formatDbMission(dbMission: any): Mission {
       : { lat: 11.2588, lng: 75.7804, label: 'Calicut Sector' },
     requiredPowers: Array.isArray(dbMission.required_powers) ? dbMission.required_powers : [],
     assignedHeroId: dbMission.assigned_hero_id,
+    assignedHero: dbMission.assigned_hero ? formatDbHero(dbMission.assigned_hero) : undefined,
     incidentId: dbMission.incident_id,
     aiReasoning: dbMission.ai_reasoning,
     createdAt: dbMission.created_at || new Date().toISOString(),
@@ -123,7 +124,7 @@ export async function fetchMissionsFromSupabase(): Promise<Mission[]> {
   try {
     const { data, error } = await supabase
       .from('missions')
-      .select('*')
+      .select('*, assigned_hero:heroes(*)')
       .order('created_at', { ascending: false });
 
     if (error || !data) {

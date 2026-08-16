@@ -222,49 +222,39 @@ function CommandDashboard() {
   };
 
   const handleReportIncident = async (inc: Partial<Incident>) => {
-    const created = await reportIncidentToSupabase(inc);
-    if (created) {
-      setIncidents((prev) => [created, ...prev.filter((i) => i.id !== created.id)]);
-    } else {
-      const fallbackInc: Incident = {
-        id: `inc-${Date.now()}`,
-        title: inc.title || 'Untitled Emergency',
-        description: inc.description || '',
-        severity: inc.severity || 'critical',
-        location: inc.location || { lat: 11.2588, lng: 75.7804, label: 'Sector' },
-        status: 'reported',
-        createdAt: new Date().toISOString(),
-      };
-      setIncidents((prev) => [fallbackInc, ...prev]);
+    try {
+      await reportIncidentToSupabase(inc);
+    } catch (err) {
+      console.error('[AEGIS] Failed to report incident:', err);
     }
   };
 
   const handleDispatchMission = async (newMission: Mission) => {
-    // 1. Optimistic UI update on Command Center dashboard
-    setMissions((prev) => [newMission, ...prev]);
-    setIncidents((prev) =>
-      prev.map((i) => (i.id === newMission.incidentId ? { ...i, status: 'dispatched' } : i))
-    );
-
-    // 2. Persist to Supabase DB -> broadcasts Realtime WebSocket to Mobile Hero Wristband!
-    const created = await createMissionInSupabase({
-      title: newMission.title,
-      description: newMission.description,
-      priority: newMission.priority,
-      location: newMission.location,
-      requiredPowers: newMission.requiredPowers,
-      assignedHeroId: newMission.assignedHeroId || newMission.assignedHero?.id,
-      aiReasoning: newMission.aiReasoning,
-    });
-
-    if (created) {
-      setMissions((prev) => [created, ...prev.filter((m) => m.id !== newMission.id)]);
+    try {
+      // Persist to Supabase DB -> Realtime WebSockets automatically broadcast to both Web & Mobile!
+      await createMissionInSupabase({
+        title: newMission.title,
+        description: newMission.description,
+        priority: newMission.priority,
+        location: newMission.location,
+        requiredPowers: newMission.requiredPowers,
+        assignedHeroId: newMission.assignedHeroId || newMission.assignedHero?.id,
+        incidentId: newMission.incidentId,
+        aiReasoning: newMission.aiReasoning,
+      });
+    } catch (err) {
+      console.error('[AEGIS] Failed to dispatch mission:', err);
     }
   };
 
+  const mappedMissions = missions.map((m) => ({
+    ...m,
+    assignedHero: heroes.find((h) => h.id === m.assignedHeroId) || m.assignedHero,
+  }));
+
   const criticalAlerts = incidents.filter((i) => i.severity === 'critical').length;
   const onlineCount = heroes.filter((h) => h.status === 'online').length;
-  const activeCount = missions.filter((m) => m.status !== 'complete').length;
+  const activeCount = mappedMissions.filter((m) => m.status !== 'complete').length;
 
   return (
     <div className="app-layout">
@@ -285,7 +275,7 @@ function CommandDashboard() {
           {activePage === 'overview' && (
             <Overview
               heroes={heroes}
-              missions={missions}
+              missions={mappedMissions}
               incidents={incidents}
               onNavigateToDispatch={() => setActivePage('dispatch')}
               onNavigateToChat={() => setActivePage('chat')}
@@ -304,7 +294,7 @@ function CommandDashboard() {
 
           {activePage === 'missions' && (
             <Missions
-              missions={missions}
+              missions={mappedMissions}
               heroes={heroes}
               onUpdateStatus={handleUpdateMissionStatus}
               onDispatchMission={handleDispatchMission}

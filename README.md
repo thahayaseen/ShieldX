@@ -6,6 +6,10 @@
 
 🌐 **Live Dashboard Console**: [https://shield-x-taupe.vercel.app/](https://shield-x-taupe.vercel.app/)
 
+<p align="center">
+  <span style="color: #ff3860; font-weight: bold;">⚠️ WARNING: The MCP Server is powered by Gemini. Use it wisely.</span>
+</p>
+
 ---
 
 ## 1. System Overview
